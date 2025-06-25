@@ -11,9 +11,23 @@ title = "Jinvic's Blog"
 # 更改使用 Hugo 构建网站时使用的默认主题
 theme = "DoIt"
 
+# 设置文章摘要长度
+summaryLength = 0
+
 [params]
   # DoIt 主题版本
   version = "0.4.X"
+  
+  # DoIt 更改 | 0.2.0 文章页面配置
+  [params.page]
+    # DoIt 新增 | 0.2.0 目录配置
+    [params.page.toc]
+      # 是否使用目录
+      enable = true
+      # DoIt 新增 | 0.2.9 是否保持使用文章前面的静态目录
+      keepStatic = false
+      # 是否使侧边目录自动折叠展开
+      auto = true
 
 [menu]
   [[menu.main]]
