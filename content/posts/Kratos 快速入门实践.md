@@ -10,8 +10,6 @@ hiddenFromSearch: false
 
 # Kratos 快速入门实践
 
-@[TOC]
-
 ## 前言
 
 kratos[官方文档](https://go-kratos.dev/docs/getting-started/start)的快速入门主打一个跑起来就算成功，基本没什么内容。本文将基于官方文档快速入门，结合自己的实践，详细说明如何在kratos框架中开发一个新功能。

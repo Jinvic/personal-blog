@@ -15,8 +15,6 @@ hiddenFromSearch: true
 
 ## 目录
 
-@[toc]
-
 ---
 
 ## 前言Ⅱ

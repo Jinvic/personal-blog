@@ -12,8 +12,6 @@ hiddenFromSearch: true
 
 # go-redis笔记
 
-@[TOC]
-
 基本都在抄API😓
 
 ## 快速入门

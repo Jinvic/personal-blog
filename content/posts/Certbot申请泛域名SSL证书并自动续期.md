@@ -12,8 +12,6 @@ hiddenFromSearch: false
 
 # Certbot申请泛域名SSL证书与自动续期
 
-@[TOC]
-
 参考：[使用 Let’s Encrypt 免费申请泛域名 SSL 证书，并实现自动续期](https://www.cnblogs.com/michaelshen/p/18538178)
 
 本来不打算写这篇的，原教程已经很详细了。不过他使用的腾讯云，在自动续期这块有个cli工具可以用。而我用的华为云只能调api，所以还是得自己摸索下顺便记录。
@@ -37,21 +35,21 @@ sudo certbot certonly --manual --preferred-challenges dns -d *.example.com -d ex
 
 记得替换你的邮箱和域名。然后他会请求你的邮箱用于紧急更新和安全提醒。
 
-![pic1](https://jinvic.github.io/post-images/use-certbot-to-apply-for-a-pan-domain-ssl-certificate-and-automatic-renewal/1.png)
+![pic1](/post-images/Certbot申请泛域名SSL证书并自动续期/1.png)
 
 然后是两次确认。第一次是服务条款选是，第二次是问能不能给你邮箱发广告邮件，可以选否。
 
-![pic2](https://jinvic.github.io/post-images/use-certbot-to-apply-for-a-pan-domain-ssl-certificate-and-automatic-renewal/2.png)
+![pic2](/post-images/Certbot申请泛域名SSL证书并自动续期/2.png)
 
 接着就是给你一串字符串去解析到对应域名。例如我就是将那一串解析到`_acme-challenge.jinvic.top`。具体解析方法看你的DNS服务商，重点是**记录类型**要选`TXT`。
 
-![pic3](https://jinvic.github.io/post-images/use-certbot-to-apply-for-a-pan-domain-ssl-certificate-and-automatic-renewal/3.png)
+![pic3](/post-images/Certbot申请泛域名SSL证书并自动续期/3.png)
 
 添加解析完成后稍等一会再继续。你也可以在[这里](https://toolbox.googleapps.com/apps/dig/#TXT/)验证解析是否成功。
 
 验证成功后就会自动生成证书，并告诉你证书所在目录和过期时间。
 
-![pic4](https://jinvic.github.io/post-images/use-certbot-to-apply-for-a-pan-domain-ssl-certificate-and-automatic-renewal/4.png)
+![pic4](/post-images/Certbot申请泛域名SSL证书并自动续期/4.png)
 
 ## nginx配置证书
 

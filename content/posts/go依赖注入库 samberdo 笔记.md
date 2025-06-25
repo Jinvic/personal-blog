@@ -11,8 +11,6 @@ hiddenFromSearch: false
 
 # do
 
-@[TOC]
-
 [samber/do](https://github.com/samber/do)
 
 文档：[⚙️ do: Typesafe dependency injection for Go | do](https://do.samber.dev/)

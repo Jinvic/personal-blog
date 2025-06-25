@@ -11,8 +11,6 @@ hiddenFromSearch: false
 
 # ent笔记
 
-@[TOC]
-
 ## 概述
 
 >ent 是一个 Go 的实体框架 (ORM)。 ent 可以使用 Go 代码轻松地定义任何数据模型或图结构；schema配置由 entc (ent codegen) 验证，这种配置生成了一个地道的静态类型的 API ，使开发人员能够富有生产性和幸福感。 它支持 MySQL, MariaDB, PostgreSQL, SQLite 和 Gremlin图数据库。
