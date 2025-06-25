@@ -1,0 +1,8 @@
+# 忽略 Hugo 构建输出
+/public/
+
+# 忽略 Hugo 自动生成的资源
+/resources/_gen
+
+# 忽略 Hugo 构建锁文件
+.hugo_build.lock
