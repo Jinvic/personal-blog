@@ -2,9 +2,10 @@
 title: BMP图片格式和读取【C++/Python】
 date: '2023-05-23T00:09:37+08:00'
 tags:
-- 编程
 - C/C++
 - Python
+categories:
+- 开发
 draft: false
 hiddenFromHomePage: false
 hiddenFromSearch: false

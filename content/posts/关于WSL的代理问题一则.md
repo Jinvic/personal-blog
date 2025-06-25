@@ -3,7 +3,8 @@ title: 关于WSL的代理问题一则
 date: '2025-06-19T13:57:29+08:00'
 tags:
 - Linux
-- 杂项
+categories:
+- 问题
 draft: false
 hiddenFromHomePage: false
 hiddenFromSearch: false

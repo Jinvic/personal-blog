@@ -2,6 +2,8 @@
 title: ProtoBuf笔记
 date: '2024-11-04T13:31:35+08:00'
 tags:
+- Go
+categories:
 - 笔记
 draft: false
 hiddenFromHomePage: false

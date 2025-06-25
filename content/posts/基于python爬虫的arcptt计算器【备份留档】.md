@@ -2,9 +2,10 @@
 title: 基于python爬虫的arcptt计算器【备份留档】
 date: '2023-06-05T23:24:24+08:00'
 tags:
-- 编程
 - Python
-- 备份留档
+- 存档
+categories:
+- 开发
 draft: false
 hiddenFromHomePage: false
 hiddenFromSearch: false

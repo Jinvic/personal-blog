@@ -2,8 +2,9 @@
 title: 记一次MCP辅助开发经历
 date: '2025-04-06T13:48:30+08:00'
 tags:
-- 编程
 - Python
+categories:
+- 开发
 draft: false
 hiddenFromHomePage: false
 hiddenFromSearch: false

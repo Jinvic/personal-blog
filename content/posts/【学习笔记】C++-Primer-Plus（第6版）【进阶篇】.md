@@ -2,8 +2,9 @@
 title: 【学习笔记】C++ Primer Plus（第6版）【进阶篇】
 date: '2023-06-26T13:47:47+08:00'
 tags:
-- 笔记
 - C/C++
+categories:
+- 笔记
 draft: true
 hiddenFromHomePage: true
 hiddenFromSearch: true

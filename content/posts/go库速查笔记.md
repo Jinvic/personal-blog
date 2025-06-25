@@ -3,6 +3,7 @@ title: go库速查笔记
 date: '2024-09-16T08:11:47+08:00'
 tags:
 - Go
+categories:
 - 笔记
 draft: true
 hiddenFromHomePage: true

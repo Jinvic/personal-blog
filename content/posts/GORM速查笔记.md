@@ -2,8 +2,9 @@
 title: GORM速查笔记
 date: '2024-08-19T16:10:52+08:00'
 tags:
-- 笔记
 - Go
+categories:
+- 笔记
 draft: false
 hiddenFromHomePage: true
 hiddenFromSearch: true

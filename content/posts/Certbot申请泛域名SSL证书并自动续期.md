@@ -2,9 +2,9 @@
 title: Certbot申请泛域名SSL证书并自动续期
 date: '2024-12-11T17:15:32+08:00'
 tags:
-- 服务器
 - Linux
-- Web
+categories:
+- 自部署
 draft: false
 hiddenFromHomePage: false
 hiddenFromSearch: false

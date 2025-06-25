@@ -2,8 +2,9 @@
 title: 记一次向koishi添加插件时的错误处理和修改
 date: '2025-01-08T16:48:06+08:00'
 tags:
-- 编程
 - 杂项
+categories:
+- 问题
 draft: false
 hiddenFromHomePage: false
 hiddenFromSearch: false

@@ -2,8 +2,9 @@
 title: Linux搭建Webdav服务
 date: '2024-12-10T08:59:01+08:00'
 tags:
-- 服务器
 - Linux
+categories:
+- 自部署
 draft: false
 hiddenFromHomePage: false
 hiddenFromSearch: false

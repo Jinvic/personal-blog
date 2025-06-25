@@ -2,9 +2,10 @@
 title: go-redis速查笔记
 date: '2024-08-22T16:15:35+08:00'
 tags:
-- 笔记
 - Go
 - Redis
+categories:
+- 开发
 draft: true
 hiddenFromHomePage: true
 hiddenFromSearch: true

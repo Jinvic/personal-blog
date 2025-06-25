@@ -2,8 +2,9 @@
 title: go依赖注入库 samber/do 笔记
 date: '2025-06-24T11:05:03+08:00'
 tags:
-- 笔记
 - Go
+categories:
+- 笔记
 draft: false
 hiddenFromHomePage: false
 hiddenFromSearch: false
