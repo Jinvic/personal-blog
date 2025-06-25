@@ -3,6 +3,8 @@ title: Kratos 快速入门实践
 date: '2024-11-11T20:50:17+08:00'
 tags:
 - Go
+categories:
+- 笔记
 draft: false
 hiddenFromHomePage: false
 hiddenFromSearch: false

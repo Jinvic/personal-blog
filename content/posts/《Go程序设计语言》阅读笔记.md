@@ -2,8 +2,9 @@
 title: 《Go程序设计语言》阅读笔记
 date: '2024-08-15T15:34:18+08:00'
 tags:
-- 笔记
 - Go
+categories:
+- 笔记
 draft: false
 hiddenFromHomePage: false
 hiddenFromSearch: false

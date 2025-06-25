@@ -3,6 +3,8 @@ title: Linux配置ClashMeta内核
 date: '2024-12-20T11:33:14+08:00'
 tags:
 - Linux
+categories:
+- 自部署
 draft: false
 hiddenFromHomePage: false
 hiddenFromSearch: false

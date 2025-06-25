@@ -2,6 +2,8 @@
 title: 使用roundcube+docker-mailserver自部署邮件服务
 date: '2025-02-07T13:57:54+08:00'
 tags: []
+categories:
+- 自部署
 draft: false
 hiddenFromHomePage: false
 hiddenFromSearch: false

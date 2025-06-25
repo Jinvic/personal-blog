@@ -2,7 +2,6 @@
 title: Hello Gridea
 date: '2025-06-25T14:20:38+08:00'
 tags:
-- Gridea
 draft: true
 hiddenFromHomePage: true
 hiddenFromSearch: true

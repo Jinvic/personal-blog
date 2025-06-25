@@ -1,7 +1,10 @@
 ---
 title: 《SQL必知必会》阅读笔记
 date: '2025-01-18T14:53:46+08:00'
-tags: []
+tags:
+- sql
+categories:
+- 笔记
 draft: false
 hiddenFromHomePage: false
 hiddenFromSearch: false

@@ -3,7 +3,9 @@ title: Linux笔记
 date: '2024-11-02T13:31:03+08:00'
 tags:
 - Linux
+categories:
 - 笔记
+- 自部署
 draft: true
 hiddenFromHomePage: false
 hiddenFromSearch: false

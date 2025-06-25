@@ -2,7 +2,6 @@
 title: 一点关于AI编程的随笔
 date: '2024-10-14T18:58:53+08:00'
 tags:
-- 随笔
 draft: false
 hiddenFromHomePage: false
 hiddenFromSearch: false
