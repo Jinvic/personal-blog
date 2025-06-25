@@ -11,8 +11,6 @@ hiddenFromSearch: false
 
 # 记一次MCP使用经历
 
-@[TOC]
-
 >本次开发的结果和完整对话记录都将整理并备份在[Github](https://github.com/Jinvic/minesweeper)上。
 
 最开始只是玩扫雷时，感觉鼠标声音有点响，想改成键盘。另外有时扫雷会出现纯看运气的情况，希望加个直接显示雷的作弊功能。就这两个需求，简单让AI写了下，过程略。

@@ -11,8 +11,6 @@ hiddenFromSearch: false
 
 # Linux搭建webDav服务
 
-@[TOC]
-
 一直都有一个文件存储传输同步共享的需求，但苦于没有太好的解决方案。qq不安全难预览还会改你压缩包后缀名，纯强盗逻辑逼着你用他家的垃圾产品生态。百度网盘则是众所周知的限速。虽然我有会员，但感觉还是更适合长期大容量存储而非短期临时的频繁存取，自带的同步空间也不好用只能同步固定文件夹。WPS倒是可以自选同步文件夹，但本来就不是做文件管理这行的使用体验极差，遇上个几百兆的pdf就歇菜了，连基础的文档服务都做不好感觉纯噱头。现在打算在服务器上自己搭一个服务，不想再受这些鸟气。
 
 本次搭建webdav使用[hacdias/webdav](https://github.com/hacdias/webdav/)，教程参考readme文件和博客[使用docker搭建webdav应用](https://sunjx97.github.io/posts/cb46f731/)。
@@ -139,7 +137,7 @@ services:
 
 使用`sudo docker-compose up -d`启动服务。然后访问`<服务器地址>:5244`登录控制台。初始账号为`admin`，密码随机生成，通过`sudo docker logs alist`查看日志：
 
-![pic1](https://jinvic.github.io/post-images/build-webdav-service-on-linux/pic1.png)
+![pic1](/post-images/Linux搭建Webdav服务/pic1.png)
 
 登录后记得修改密码。
 
@@ -176,7 +174,7 @@ log:
 ### raidrive
 
 可以使用[raidrive](https://www.raidrive.com/)将Webdav挂载到电脑盘。配置示例如下，依次填入你的服务器地址，配置中设置的端口号，账号密码：
-![pic2](https://jinvic.github.io/post-images/build-webdav-service-on-linux/pic2.png)
+![pic2](/post-images/Linux搭建Webdav服务/pic2.png)
 
 **注意**：如果你在配置中没有设置tls，不要勾选"地址"旁边的"安全连接"复选框。
 

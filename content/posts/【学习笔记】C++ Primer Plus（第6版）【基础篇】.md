@@ -15,8 +15,6 @@ hiddenFromSearch: false
 
 ## 目录
 
-@[TOC]
-
 ---
 
 ## 前言
@@ -44,7 +42,8 @@ hiddenFromSearch: false
 #### 头文件命名
 
 头文件命名约定可以看看，了解一下c和c++头文件的区别。
-![2.1_1](https://Jinvic.github.io//post-images/[study-notes]-cpp-primer-plus-6th-edition-[basic]/2.1_1.png)
+
+![2.1_1](/post-images/【学习笔记】C++PrimerPlus（第6版）【基础篇】/2.1_1.png)
 
 #### 命名空间
 
@@ -65,7 +64,7 @@ hiddenFromSearch: false
 
 我之前一直将原型称为声明，因为原型的作用就和声明一样，告诉编译器有这么个东西。不过我一般不写原型，而是直接在用到函数之前把函数的定义写好在前面。这或许并不是一个好的编码习惯，需要改正。
 再复习下原型和定义的区别：
-![2.4_1](https://Jinvic.github.io//post-images/[study-notes]-cpp-primer-plus-6th-edition-[basic]/2.4_1.png)
+![2.4_1](/post-images/【学习笔记】C++PrimerPlus（第6版）【基础篇】/2.4_1.png)
 
 ---
 
@@ -75,7 +74,7 @@ hiddenFromSearch: false
 
 #### 变量命名规则
 
-![3.1_1](https://Jinvic.github.io//post-images/[study-notes]-cpp-primer-plus-6th-edition-[basic]/3.1_1.png)
+![3.1_1](/post-images/【学习笔记】C++PrimerPlus（第6版）【基础篇】/3.1_1.png)
 
 #### 运算符sizeof
 
@@ -89,8 +88,8 @@ cout << "short is " << sizeof n_short << " bytes.\n" ;
 #### 头文件climits
 
 头文件climits定义了符号常量来表示类型的限制。
-![3.1_2](https://Jinvic.github.io//post-images/[study-notes]-cpp-primer-plus-6th-edition-[basic]/3.1_2.png)
-![3.1_3](https://Jinvic.github.io//post-images/[study-notes]-cpp-primer-plus-6th-edition-[basic]/3.1_3.png)
+![3.1_2](/post-images/【学习笔记】C++PrimerPlus（第6版）【基础篇】/3.1_2.png)
+![3.1_3](/post-images/【学习笔记】C++PrimerPlus（第6版）【基础篇】/3.1_3.png)
 
 #### C++进制表示法
 
@@ -163,7 +162,7 @@ char32_t ch2 = U'\U0000222B'; // universal character name in 32-bit form
 
 书里只简单讲了讲优先级和结合性的概念。这里放一张[微软文档](https://learn.microsoft.com/zh-cn/cpp/cpp/cpp-built-in-operators-precedence-and-associativity?view=msvc-170)里的表，这张表的内容很全，方便查表。
 顺便吐槽，这表里有机翻啊，除法翻译成部门，赋值翻译成转让。。。我用md的表格语法贴上来，改掉上述翻译错误。
-<!-- ![](https://Jinvic.github.io//post-images/[study-notes]-cpp-primer-plus-6th-edition-[basic]/3.4_1.png) -->
+<!-- ![](/post-images/【学习笔记】C++PrimerPlus（第6版）【基础篇】/3.4_1.png) -->
 | 运算符说明                   |      运算符      | 替代方法 |
 | ---------------------------- | :--------------: | :------: |
 | 第 1 组优先级，无关联性      |                |          |
@@ -241,7 +240,7 @@ char32_t ch2 = U'\U0000222B'; // universal character name in 32-bit form
 
 #### 类型转换
 
-![3.4_2](https://Jinvic.github.io//post-images/[study-notes]-cpp-primer-plus-6th-edition-[basic]/3.4_2.png)
+![3.4_2](/post-images/【学习笔记】C++PrimerPlus（第6版）【基础篇】/3.4_2.png)
 在进行**列表初始化（list-initiallization）**，即使用{}进行初始化（C++11）时，不允许**缩窄（narrowing）**，即变量的类型可能无法表示赋给它的值。
 
 ```C++
@@ -601,7 +600,7 @@ arrayetypeName, n_elem> arr;
 > 检测到EOF后，cin将两位（eofbit和failbit）都设置为1。可以通过成员函数eof( )来查看eofbit是否被设置;如果检测到EOF，则cin.eof()将返回 bool值 true，否则返回 false。同样，如果eofbit或failbit被设置为1，则 fail()成员函数返回 true，否则返回false。注意，eof()和fail()方法报告最近读取的结果;也就是说，它们在事后报告，而不是预先报告。因此应将cin.eof( )或cin.fail()测试放在读取后，程序清单5.18中的设计体现了这一点。它使用的是 fail()，而不是eof( )，因为前者可用于更多的实现中。
 
 事实上，关于EOF的检测还有很多细碎的知识点，我就不一一列举了，掌握常用的方法就行。这部分内容更多是扩展一下视野让你知道为什么会这样，以及简单提及对象、原型和重载这些概念，对我作用不大。
-![5.2_1](https://Jinvic.github.io//post-images/[study-notes]-cpp-primer-plus-6th-edition-[basic]/5.2_1.png)
+![5.2_1](/post-images/【学习笔记】C++PrimerPlus（第6版）【基础篇】/5.2_1.png)
 
 ### 5.6 嵌套循环和二维数组
 
@@ -654,7 +653,7 @@ else
 
 ### 6.3 字符函数库cctype
 
-![6.3_1](https://Jinvic.github.io//post-images/[study-notes]-cpp-primer-plus-6th-edition-[basic]/6.3_1.png)
+![6.3_1](/post-images/【学习笔记】C++PrimerPlus（第6版）【基础篇】/6.3_1.png)
 
 ### 6.4 ？：运算符
 

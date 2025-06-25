@@ -9,8 +9,6 @@ hiddenFromSearch: false
 
 # 《SQL必知必会》阅读笔记
 
-@[TOC]
-
 这次看到是[第五版](https://book.douban.com/subject/35167240/)，20年7月出版。
 MySQL的示例数据库在[这里](https://forta.com/wp-content/uploads/books/0135182794/TYSQL5_MySQL.zip)
 最近都是通过orm操作sql，补习一下基础知识好了。简单记一下，别变成抄书就行。

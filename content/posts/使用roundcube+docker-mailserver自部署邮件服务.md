@@ -9,8 +9,6 @@ hiddenFromSearch: false
 
 # 使用roundcube+docker-mailserver自部署邮件服务
 
-@[TOC]
-
 在做一个开源项目的邮件通知功能，本来用smtp发个邮件就行，不知怎么的就捣鼓着就开始自建邮件服务器了。不过用自己的域名实现邮件服务很酷不是吗？
 
 ## 参考

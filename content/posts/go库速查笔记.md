@@ -11,8 +11,6 @@ hiddenFromSearch: true
 
 # go库速查笔记
 
-@[toc]
-
 因为很多库教程就几句话，单开一页太麻烦就记在一起了。
 
 ## web开发
