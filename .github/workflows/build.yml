@@ -1,0 +1,39 @@
+name: Build and Deploy Hugo Site
+
+on:
+  push:
+    branches:
+      - master # 设置触发构建和部署的分支
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      with:
+        submodules: true  # Fetch Hugo themes (true OR recursive)
+        fetch-depth: 0    # Fetch all history for .GitInfo and .Lastmod
+
+    - name: Setup Hugo
+      uses: peaceiris/actions-hugo@v3
+      with:
+        hugo-version: 'latest'
+        extended: true
+
+    - name: Build the site
+      run: hugo --minify # 使用--minify选项来压缩HTML、JS和CSS
+
+    - name: Deploy to Server
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5 # 部署到服务器
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USER }}
+          password: ${{ secrets.FTP_PASS }}
+          local-dir: ${{ github.workspace }}/public/
+          server-dir: ./
