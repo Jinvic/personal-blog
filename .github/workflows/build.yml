@@ -15,7 +15,7 @@ jobs:
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         submodules: true  # Fetch Hugo themes (true OR recursive)
         fetch-depth: 0    # Fetch all history for .GitInfo and .Lastmod
@@ -30,10 +30,10 @@ jobs:
       run: hugo --minify # 使用--minify选项来压缩HTML、JS和CSS
 
     - name: Deploy to Server
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5 # 部署到服务器
-        with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USER }}
-          password: ${{ secrets.FTP_PASS }}
-          local-dir: ${{ github.workspace }}/public/
-          server-dir: ./
+      uses: SamKirkland/FTP-Deploy-Action@v4.3.5 # 部署到服务器
+      with:
+        server: ${{ secrets.FTP_SERVER }}
+        username: ${{ secrets.FTP_USER }}
+        password: ${{ secrets.FTP_PASS }}
+        local-dir: ${{ github.workspace }}/public/
+        server-dir: ./
