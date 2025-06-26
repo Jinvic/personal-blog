@@ -436,7 +436,7 @@ enable = false
 envId = "https://twikoo-comments-doit.vercel.app/"
 region = ""
 path = ""
-cloudbase = true                                   # boolean : true / false. # 是否部署在腾讯云 CloudBase
+cloudbase = false                                   # boolean : true / false. # 是否部署在腾讯云 CloudBase
 visitor = true
 commentCount = true
 # Vssue comment config (https://vssue.js.org//)
@@ -478,9 +478,9 @@ dataLoading = "lazy"
 # artalk comment config (https://artalk.js.org/guide/frontend/config.html)
 # artalk comment 评论系统设置 (https://artalk.js.org/guide/frontend/config.html)
 [page.comment.artalk]
-enable = false
-server = ""
-site = ""
+enable = true
+server = "https://comment.jinvic.top"
+site = "Jinvic's Blog"
 lite = false
 katex = false
 lightbox = false
