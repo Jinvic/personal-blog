@@ -14,8 +14,8 @@ hiddenFromSearch: false
 
 [samber/do](https://github.com/samber/do)
 
-文档：[⚙️ do: Typesafe dependency injection for Go | do](https://do.samber.dev/)
-参考：[源码分析——Go语言依赖注入库 samber/do - 飞鸟记](https://blog.aflybird.cn/2023/08/read-open-source-go-dependency-injection-library-samber-do)
+- 文档：[⚙️ do: Typesafe dependency injection for Go | do](https://do.samber.dev/)
+- 参考：[源码分析——Go语言依赖注入库 samber/do - 飞鸟记](https://blog.aflybird.cn/2023/08/read-open-source-go-dependency-injection-library-samber-do)
 
 do是一个依赖注入库。相比于用过的wire，do更加轻量且无需代码生成。
 
