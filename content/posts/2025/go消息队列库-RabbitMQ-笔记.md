@@ -1,6 +1,6 @@
 ---
 title: go消息队列库 RabbitMQ 笔记
-date: '2025-06-11T10:52:43+08:00'
+date: '2025-07-11T10:52:43+08:00'
 tags:
 - Go
 categories:
@@ -19,12 +19,6 @@ hiddenFromSearch: false
 - [AMQP 0-9-1 模型详解](https://rabbitmq.cn/tutorials/amqp-concepts)
 - [中文文档](https://www.rabbitmq.cn/tutorials/tutorial-one-go)
 - [英文文档](https://rabbitmq.com/tutorials/tutorial-four-go)
-
----
-
-[TOC]
-
----
 
 `amqp091-go` 是RabiitMQ提供的官方go库。
 
