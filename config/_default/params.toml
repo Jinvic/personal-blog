@@ -577,7 +577,7 @@ sogou = ""
 # Analytics config
 # 网站分析配置
 [analytics]
-enable = false
+enable = true
 # Google Analytics
 [analytics.google]
 id = ""
