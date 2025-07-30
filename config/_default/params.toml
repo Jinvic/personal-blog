@@ -595,8 +595,8 @@ server = ""
 id = ""
 # Umami Analytics
 [analytics.umami]
-data_website_id = ""
-src = ""
+data_website_id = "21a26853-b5a0-4f01-ae42-a6717834edc5"
+src = "https://umami.jinvic.top/script.js"
 data_host_url = ""
 data_domains = ""
 # Plausible Analytics
