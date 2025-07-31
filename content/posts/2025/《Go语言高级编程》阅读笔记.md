@@ -69,7 +69,7 @@ Go 语言对字符串和 `[]rune` 类型的相互转换提供了特殊的支持�
 
 最后提供了 `string`, `[]byte`, `[]rune` 各种类型的模拟转换方式，想深入底层进一步了解可以看看。
 
-### 1.3.3 切片(slice)
+#### 1.3.3 切片(slice)
 
 我们先看看切片的结构定义，`reflect.SliceHeader`：
 
@@ -197,3 +197,123 @@ a = a[:len(a)-1]  // 从切片删除最后一个元素
 为了安全，当两个切片类型 []T 和 []Y 的底层原始切片类型不同时，Go 语言是无法直接转换类型的。不过也可以通过`unsafe`和`reflect`等包进行更底层的操作，这时的语法就更像C了。
 
 示例略，有需要再看。需要一定的前置知识，而`reflect`和`unsafe`包我都只有简单了解，平时基本用不上。
+
+### 1.4 函数、方法和接口
+
+**init初始化顺序**：
+
+- 不同包：按导入顺序
+- 同一包不同文件：顺序不确定
+- 同一文件：按出现顺序
+
+[包初始化流程](https://chai2010.cn/advanced-go-programming-book/images/ch1-11-init.ditaa.png)
+
+#### 1.4.1 函数
+
+在 Go 语言中，函数是一类对象，可以保存变量中。函数主要有具名和匿名之分。
+
+Go 语言中的函数可以有多个参数和多个返回值，还支持可变数量的参数，相当于切片类型。
+
+---
+
+当匿名函数捕获了外部外部作用域的局部变量时，我们称其为**闭包**。
+
+闭包对捕获的外部变量并不是传值方式访问，而是以**引用**的方式访问,使得这些变量的生命周期可以超出它们所在的作用域，只要还有引用它们的闭包存在。
+
+闭包的这种引用方式访问外部变量的行为可能会导致一些隐含的问题:
+
+```go
+func main() {
+    for i := 0; i < 3; i++ {
+        defer func(){ println(i) } ()
+    }
+}
+// Output:
+// 3
+// 3
+// 3
+```
+
+修复的思路是在每轮迭代中为每个 defer 函数生成独有的变量。可以复制一份或者通过参数传入。
+
+```go
+func main() {
+    for i := 0; i < 3; i++ {
+        i := i // 定义一个循环体内局部变量 i
+        defer func(){ println(i) } ()
+    }
+}
+
+func main() {
+    for i := 0; i < 3; i++ {
+        // 通过函数传入 i
+        // defer 语句会马上对调用参数求值
+        defer func(i int){ println(i) } (i)
+    }
+}
+```
+
+---
+
+Go 语言中，以切片为参数调用函数时，有时看起来像是传引用而非传值。虽然切片的底层数组确实是通过隐式指针传递(指针传值，但指向同一份数据)，但切片结构体中还包括len和cap信息是传值的，发生变动时不能反映到原切片。所以一般会通过返回修改后的切片来更新原切片，例如内置函数`append()`。
+
+#### 1.4.2 方法
+
+方法一般是面向对象编程(OOP)的一个特性，在 C++ 语言中方法对应一个类对象的成员函数，是关联到具体对象上的虚表中的。但是 Go 语言的方法却是关联到类型的，这样可以在编译阶段完成方法的静态绑定。
+
+Go 语言中，通过在结构体内置匿名的成员来实现继承。通过嵌入匿名的成员，可以继承其内部成员及匿名成员类型所对应的方法。
+
+```go
+type Cache struct {
+    m map[string]string
+    sync.Mutex
+}
+
+func (p *Cache) Lookup(key string) string {
+    p.Lock()            // 编译时展开为p.Mutex.Lock()
+    defer p.Unlock()    // 同上
+
+    return p.m[key]
+}
+```
+
+这种方式继承的方法是编译时静态绑定的，并不能实现 C++ 中虚函数的多态特性。所有继承来的方法的接收者参数依然是那个匿名成员本身，而不是当前的变量。如果需要虚函数的多态特性，需要借助 Go 语言接口来实现。
+
+#### 1.4.3 接口
+
+接口这一节讲的比较玄乎，个人理解是只要类型实现了接口定义的方法声明，就算实现了这个接口，不需要显示声明。当然，要真正理解还是需要多加练习。
+
+Go 语言对基础类型的类型一致性要求非常严格，但对于接口类型的转换则非常的灵活。对象和接口之间的转换、接口和接口之间的转换都可能是隐式的转换。
+
+```go
+var (
+    a io.ReadCloser = (*os.File)(f) // 隐式转换, *os.File 满足 io.ReadCloser 接口
+    b io.Reader     = a             // 隐式转换, io.ReadCloser 满足 io.Reader 接口
+    c io.Closer     = a             // 隐式转换, io.ReadCloser 满足 io.Closer 接口
+    d io.Reader     = c.(io.Reader) // 显式转换, io.Closer 不满足 io.Reader 接口
+)
+```
+
+有时候对象和接口之间太灵活了，导致我们需要人为地限制这种无意之间的适配。常见的做法是定义一个含特殊方法来区分接口。
+
+```go
+type runtime.Error interface {
+    error
+
+    // RuntimeError is a no-op function but
+    // serves to distinguish types that are run time
+    // errors from ordinary errors: a type is a
+    // run time error if it has a RuntimeError method.
+    RuntimeError()
+}
+
+type proto.Message interface {
+    Reset()
+    String() string
+    ProtoMessage()
+}
+```
+
+不过这种限制也可以被手动实现对应方法或者嵌入匿名的原接口来绕过。
+
+这种通过嵌入匿名接口或嵌入匿名指针对象来实现继承的做法其实是一种纯**虚继承**，我们继承的只是接口指定的规范，真正的实现在运行的时候才被注入。
