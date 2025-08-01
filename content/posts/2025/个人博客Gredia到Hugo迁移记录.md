@@ -141,3 +141,19 @@ docker exec -it artalk artalk admin
 ```
 
 如果在本地调试时无法使用artalk，在artalk的可信域名中添加`http://localhost:1313`就行。
+
+## 分析
+
+Dolt主题自带很多常见的流量分析配置，在配置项中启用就行。我使用的是自部署的Umami：
+
+```toml
+# _default/params.toml
+
+# Analytics config
+# 网站分析配置
+[analytics]
+enable = true
+[analytics.umami]
+data_website_id = "..."
+src = "..."
+```
