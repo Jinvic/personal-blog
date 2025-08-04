@@ -317,3 +317,531 @@ type proto.Message interface {
 不过这种限制也可以被手动实现对应方法或者嵌入匿名的原接口来绕过。
 
 这种通过嵌入匿名接口或嵌入匿名指针对象来实现继承的做法其实是一种纯**虚继承**，我们继承的只是接口指定的规范，真正的实现在运行的时候才被注入。
+
+### 1.5 面向并发的内存模型
+
+#### 1.5.1 Goroutine和系统线程
+
+Goroutine 是 Go 语言特有的并发体，是一种轻量级的线程，由 go 关键字启动。goroutine 和系统线程并不等价，前者开销更小。
+
+系统级线程的栈大小固定（一般默认可能是 2MB），用来保存函数递归调用时参数和局部变量。固定了栈的大小导致了两个问题：
+
+- 对于很多只需要很小的栈空间的线程：
+    问题：浪费空间
+    解决：降低固定的栈大小，提升空间的利用率
+- 对于少数需要巨大栈空间的线程：
+    问题：存在栈溢出风险
+    解决：增大栈的大小以允许更深的函数递归调用
+
+很明显，两者是无法兼得的。
+
+Goroutine 的栈大小是动态变化的，启动时很小（可能是2KB 或 4KB）当遇到深度递归导致当前栈空间不足时，Goroutine 会根据需要动态地伸缩栈的大小。也因为启动的代价很小，可以轻易启动大量 Goroutine。
+
+关于go的调度器，这里简单提了一下，有机会我再深入了解。
+
+#### 1.5.2 原子操作
+
+所谓的原子操作就是并发编程中“最小的且不可并行化”的操作。数据库四原则ACID中的A就是指的原子性（atomic）。
+
+对粗粒度下的原子操作可以使用`sync.Mutex`的互斥锁保证并发安全。不过`sync.Mutex`常用于整个代码块的复杂逻辑。对于单个数值的原子操作，可以使用性能更高的`sync/atomic`包。
+
+```go
+import (
+    "sync"
+    "sync/atomic"
+)
+
+var total uint64
+
+func worker(wg *sync.WaitGroup) {
+    defer wg.Done()
+
+    var i uint64
+    for i = 0; i <= 100; i++ {
+        atomic.AddUint64(&total, i)
+    }
+}
+
+func main() {
+    var wg sync.WaitGroup
+    wg.Add(2)
+
+    go worker(&wg)
+    go worker(&wg)
+    wg.Wait()
+}
+```
+
+也可以组合原子操作和互斥锁实现高效的单件模式，通过原子检测标志位状态降低互斥锁的使用次数来提高性能。例如标准库的`sync.Once`实现：
+
+```go
+type Once struct {
+    m    Mutex
+    done uint32
+}
+
+func (o *Once) Do(f func()) {
+    if atomic.LoadUint32(&o.done) == 1 {
+        return
+    }
+
+    o.m.Lock()
+    defer o.m.Unlock()
+
+    if o.done == 0 {
+        defer atomic.StoreUint32(&o.done, 1)
+        f()
+    }
+}
+```
+
+使用例：
+
+```go
+var (
+    instance *singleton
+    once     sync.Once
+)
+
+func Instance() *singleton {
+    once.Do(func() {
+        instance = &singleton{}
+    })
+    return instance
+}
+```
+
+对于复杂对象的原子操作，可以使用`sync/atomic`的`Load`和`Store`方法，其参数和返回值都是`interface{}`。
+
+一个简化的生产者消费者模型使用例：
+
+```go
+var config atomic.Value // 保存当前配置信息
+
+// 初始化配置信息
+config.Store(loadConfig())
+
+// 启动一个后台线程, 加载更新后的配置信息
+go func() {
+    for {
+        time.Sleep(time.Second)
+        config.Store(loadConfig())
+    }
+}()
+
+// 用于处理请求的工作者线程始终采用最新的配置信息
+for i := 0; i < 10; i++ {
+    go func() {
+        for r := range requests() {
+            c := config.Load()
+            // ...
+        }
+    }()
+}
+```
+
+#### 1.5.3 顺序一致性内存模型
+
+大意就是不同Goroutine之间的执行顺序不确定，有需要时需要使用同步原语明确排序。
+
+#### 1.5.4 初始化顺序
+
+在 [函数](#141-函数) 章节已经介绍过初始化顺序。在 `main.main` 函数执行之前所有代码都运行在同一个 `Goroutine` 中，即运行在程序的主系统线程中。所以所有的 `init` 函数和 `main` 函数都是在主线程完成，它们也是满足顺序一致性模型的。但是 `init` 函数中开启的新 `goroutine` 就并非如此了。
+
+#### 1.5.5 Goroutine的创建
+
+`go` 语句会在当前 Goroutine 对应函数返回前创建新的 Goroutine。但是新创建 Goroutine 对应的 `f()` 的执行事件和 原 Goroutine 返回的事件则是不可排序的，也就是并发的。
+
+#### 1.5.6 基于 Channel 的通信
+
+基本就是一些 Channel 基础用法。
+
+- **对于从无缓冲 Channel 进行的接收，发生在对该 Channel 进行的发送完成之前。**
+- **对于 Channel 的第 K 个接收完成操作发生在第 K+C 个发送操作完成之前，其中 C 是 Channel 的缓存大小。**
+
+可以通过控制 Channel 的缓存大小来控制并发执行的 Goroutine 的最大数目。
+
+#### 1.5.7 不靠谱的同步
+
+```go
+func main() {
+    go println("hello, world")
+    time.Sleep(time.Second)
+}
+```
+
+如上，有时我们会简单通过休眠来保证执行顺序，但这种做法并不严谨。最好使用显式的同步操作。
+
+### 1.6 常见的并发模式
+
+Go 语言的并发编程哲学：
+
+> Do not communicate by sharing memory; instead, share memory by communicating.
+> 不要通过共享内存来通信，而应通过通信来共享内存。
+
+#### 1.6.1 并发版本的 Hello world
+
+从`sync.Mutex`到 Channel 缓冲区大小等方面，由浅入深介绍并发条件下如何控制执行顺序，最后引出`sync.WaitGroup`的大致原理和用法。
+
+```go
+func main() {
+    done := make(chan int, 10) // 带 10 个缓存
+
+    // 开 N 个后台打印线程
+    for i := 0; i < cap(done); i++ {
+        go func(){
+            fmt.Println("你好, 世界")
+            done <- 1
+        }()
+    }
+
+    // 等待 N 个后台线程完成
+    for i := 0; i < cap(done); i++ {
+        <-done
+    }
+}
+```
+
+如上只是方便理解，实际`sync.WaitGroup`维护的是一个计数器而非通道。不过用法是一致的。
+
+```go
+func main() {
+    var wg sync.WaitGroup
+
+    // 开 N 个后台打印线程
+    for i := 0; i < 10; i++ {
+        wg.Add(1)
+
+        go func() {
+            fmt.Println("你好, 世界")
+            wg.Done()
+        }()
+    }
+
+    // 等待 N 个后台线程完成
+    wg.Wait()
+}
+```
+
+#### 1.6.2 生产者消费者模型
+
+> 并发编程中最常见的例子就是生产者消费者模式，生产者生产数据放到成果队列中，同时消费者从成果队列中来取这些数据。这样就让生产消费变成了异步的两个过程。
+
+```go
+// 生产者: 生成 factor 整数倍的序列
+func Producer(factor int, out chan<- int) {
+    for i := 0; ; i++ {
+        out <- i*factor
+    }
+}
+
+// 消费者
+func Consumer(in <-chan int) {
+    for v := range in {
+        fmt.Println(v)
+    }
+}
+func main() {
+    ch := make(chan int, 64) // 成果队列
+
+    go Producer(3, ch) // 生成 3 的倍数的序列
+    go Producer(5, ch) // 生成 5 的倍数的序列
+    go Consumer(ch)    // 消费生成的队列
+
+    // Ctrl+C 退出
+    sig := make(chan os.Signal, 1)
+    signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+    fmt.Printf("quit (%v)\n", <-sig)
+}
+```
+
+#### 1.6.3 发布订阅模型
+
+> 发布订阅（publish-and-subscribe）模型通常被简写为 pub/sub 模型。在这个模型中，消息生产者成为发布者（publisher），而消息消费者则成为订阅者（subscriber），生产者和消费者是 M:N 的关系。在传统生产者和消费者模型中，是将消息发送到一个队列中，而发布订阅模型则是将消息发布给一个主题。
+
+示例代码怪怪的，订阅者只能订阅一个发布者的一个主题。干脆自己手搓一个示例：[Jinvic/pubsub-example 发布订阅模型示例](https://github.com/Jinvic/pubsub-example)。
+
+#### 1.6.4 控制并发数
+
+介绍虚拟文件系统`vfs`包有一个`gatefs`子包会通过一个带缓存的通道控制访问该虚拟文件系统的访问并发数。不只是这个包，我们在其他功能中需要控制并发数时也可以参考这个实现。
+
+```go
+import (
+    "golang.org/x/tools/godoc/vfs"
+    "golang.org/x/tools/godoc/vfs/gatefs"
+)
+
+func main() {
+    fs := gatefs.New(vfs.OS("/path"), make(chan bool, 8))
+    // ...
+}
+```
+
+```go
+var limit = make(chan int, 3)
+
+func main() {
+    for _, w := range work {
+        go func() {
+            limit <- 1
+            w()
+            <-limit
+        }()
+    }
+    select{}
+}
+```
+
+#### 1.6.5 赢者为王
+
+简单来说就是并行运行多个任务，消费最先完成的任务返回的结果（First-Win）。原文示例简化了**资源清理**和**取消机制**，让AI重写补了一下。
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "math/rand"
+    "time"
+)
+
+// 模拟不同搜索引擎的搜索函数
+// 它们接收一个 context.Context，当 context 被取消时，应该停止工作
+func searchByBing(ctx context.Context, query string) (string, error) {
+    // 模拟随机的网络延迟 (100ms - 1000ms)
+    delay := time.Duration(100+rand.Intn(900)) * time.Millisecond
+    timer := time.NewTimer(delay)
+    defer timer.Stop() // 防止资源泄漏
+
+    select {
+    case <-timer.C:
+        // 模拟成功返回结果
+        return fmt.Sprintf("[Bing] Results for '%s' (took %v)", query, delay), nil
+    case <-ctx.Done():
+        // context 被取消了，立即返回
+        return "", ctx.Err() // 返回错误，通常是 context.Canceled
+    }
+}
+
+func searchByGoogle(ctx context.Context, query string) (string, error) {
+    delay := time.Duration(50+rand.Intn(1500)) * time.Millisecond
+    timer := time.NewTimer(delay)
+    defer timer.Stop()
+
+    select {
+    case <-timer.C:
+        return fmt.Sprintf("[Google] Results for '%s' (took %v)", query, delay), nil
+    case <-ctx.Done():
+        return "", ctx.Err()
+    }
+}
+
+func searchByBaidu(ctx context.Context, query string) (string, error) {
+    delay := time.Duration(200+rand.Intn(2000)) * time.Millisecond
+    timer := time.NewTimer(delay)
+    defer timer.Stop()
+
+    select {
+    case <-timer.C:
+        return fmt.Sprintf("[Baidu] Results for '%s' (took %v)", query, delay), nil
+    case <-ctx.Done():
+        return "", ctx.Err()
+    }
+}
+
+// 并发搜索：启动多个搜索引擎，返回第一个成功的结果
+func parallelSearch(query string) (string, error) {
+    // 1. 创建一个可取消的 context
+    ctx, cancel := context.WithCancel(context.Background())
+    defer cancel() // 当函数返回时，确保取消所有子任务
+
+    // 2. 创建结果通道
+    resultCh := make(chan string, 3) // 缓存大小等于并发数
+
+    // 3. 启动多个搜索 Goroutine
+    go func() {
+        if result, err := searchByBing(ctx, query); err == nil {
+            resultCh <- result // 只发送成功结果
+        }
+    }()
+    go func() {
+        if result, err := searchByGoogle(ctx, query); err == nil {
+            resultCh <- result
+        }
+    }()
+    go func() {
+        if result, err := searchByBaidu(ctx, query); err == nil {
+            resultCh <- result
+        }
+    }()
+
+    // 4. 等待第一个成功的结果
+    select {
+    case result := <-resultCh:
+        // 5. 一旦得到第一个结果，立即取消所有其他搜索
+        cancel()
+        // 6. 返回获胜者的结果
+        return result, nil
+        // case <-time.After(3 * time.Second):
+        //     cancel() // 超时也取消
+        //     return "", fmt.Errorf("search timeout")
+    }
+}
+
+func main() {
+    rand.Seed(time.Now().UnixNano()) // 初始化随机数种子
+
+    // 执行并发搜索
+    result, err := parallelSearch("golang")
+    if err != nil {
+        fmt.Printf("Search failed: %v\n", err)
+        return
+    }
+
+    fmt.Println("Winner:", result)
+    // 注意：其他两个搜索 Goroutine 会被 cancel() 触发的 ctx.Done() 中断
+}
+```
+
+如上，通过`context.WithCancel()`创建了一个可以取消的上下文。当其中一个任务完成时，使用`cancel()`关闭上下文。
+同时，各个任务在运行的同时也在监听上下文，当上下文被关闭时中断任务。
+
+#### 1.6.6 素数筛
+
+并发版本的素数筛是一个经典的并发例子，通过它我们可以更深刻地理解 Go 语言的并发特性。实现原理如下：
+
+![素数筛实现原理](https://chai2010.cn/advanced-go-programming-book/images/ch1-13-prime-sieve.png)
+
+个人理解，为了避免混淆，以并发思维去理解并发素数筛算法，需要明确一下几点：
+
+- 每个Goroutine都是独立的，在方法结束后仍在独立运行。
+- main函数中的主循环里的ch是在一直更新的，并不是最初的ch。
+- 素数直接在主循环中打印输出了，并没有保存状态。
+
+```go
+// 返回生成自然数序列的管道: 2, 3, 4, ...
+func GenerateNatural() chan int {
+    ch := make(chan int)
+    go func() {
+        for i := 2; ; i++ {
+            ch <- i
+        }
+    }()
+    return ch
+}
+```
+
+GenerateNatural 函数内部启动一个 Goroutine 生产序列，返回对应的管道。
+
+然后是为每个素数构造一个筛子：将输入序列中是素数倍数的数踢出，并返回新的序列，是一个新的管道。
+
+```go
+// 管道过滤器: 删除能被素数整除的数
+func PrimeFilter(in <-chan int, prime int) chan int {
+    out := make(chan int)
+    go func() {
+        for {
+            if i := <-in; i%prime != 0 {
+                out <- i
+            }
+        }
+    }()
+    return out
+}
+```
+
+PrimeFilter 函数也是内部启动一个 Goroutine 生产序列，返回过滤后序列对应的管道。
+
+最后在main函数中启动这个并发的素数筛：
+
+```go
+func main() {
+    ch := GenerateNatural() // 自然数序列: 2, 3, 4, ...
+    for i := 0; i < 100; i++ {
+        prime := <-ch // 新出现的素数
+        fmt.Printf("%v: %v\n", i+1, prime)
+        ch = PrimeFilter(ch, prime) // 基于新素数构造的过滤器
+    }
+}
+```
+
+#### 1.6.7 并发的安全退出
+
+正如我在[1.6.5 赢者为王](#165-赢者为王)中提到的，原示例并没有提供安全退出机制，这一节则是介绍如何实现安全退出。循序渐进的介绍了`select`监听多个管道，关闭管道实现消息广播等。其实就是下一节要讲解的`context`包的大致原理。
+
+#### 1.6.8 context 包
+
+> 在 Go1.7 发布时，标准库增加了一个 context 包，用来简化对于处理单个请求的多个 Goroutine 之间与请求域的数据、超时和退出等操作。
+
+如下是改进后的素数筛实现，通过上下文控制那些原本“失控”的Goroutine。
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "sync"
+)
+
+// 返回生成自然数序列的管道: 2, 3, 4, ...
+func GenerateNatural(ctx context.Context, wg *sync.WaitGroup) chan int {
+    ch := make(chan int)
+    go func() {
+        defer wg.Done()
+        defer close(ch)
+        for i := 2; ; i++ {
+            select {
+            case <-ctx.Done():
+                return
+            case ch <- i:
+            }
+        }
+    }()
+    return ch
+}
+
+// 管道过滤器: 删除能被素数整除的数
+func PrimeFilter(ctx context.Context, in <-chan int, prime int, wg *sync.WaitGroup) chan int {
+    out := make(chan int)
+    go func() {
+        defer wg.Done()
+        defer close(out)
+        for i := range in {
+            if i%prime != 0 {
+                select {
+                case <-ctx.Done():
+                    return
+                case out <- i:
+                }
+            }
+        }
+    }()
+    return out
+}
+
+func main() {
+    wg := sync.WaitGroup{}
+    // 通过 Context 控制后台 Goroutine 状态
+    ctx, cancel := context.WithCancel(context.Background())
+    wg.Add(1)
+    ch := GenerateNatural(ctx, &wg) // 自然数序列: 2, 3, 4, ...
+    for i := 0; i < 100; i++ {
+        prime := <-ch // 新出现的素数
+        fmt.Printf("%v: %v\n", i+1, prime)
+        wg.Add(1)
+        ch = PrimeFilter(ctx, ch, prime, &wg) // 基于新素数构造的过滤器
+    }
+
+    cancel()
+    wg.Wait()
+}
+```
+
+除了上下文的引入，还有两个地方需要注意：
+
+- 通过 `for range` 循环保证了输入管道被关闭时，循环能退出，不会出现死循环；
+- 通过 `defer close` 保证了无论是输入管道被关闭，还是 ctx 被取消，只要素数筛退出，都会关闭输出管道。
+
+如上细节处理避免了死锁问题，同时使得实现更为优雅。
