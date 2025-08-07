@@ -4,7 +4,7 @@ date: '2025-08-07T14:37:36+08:00'
 tags: 
 - Go
 categories: 
-- 笔记
+- 知识点
 draft: false
 hiddenFromHomePage: false
 hiddenFromSearch: false

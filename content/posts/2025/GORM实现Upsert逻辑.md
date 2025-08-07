@@ -5,6 +5,7 @@ tags:
 - Go
 - Sql
 categories: 
+- 知识点
 draft: false
 hiddenFromHomePage: false
 hiddenFromSearch: false
