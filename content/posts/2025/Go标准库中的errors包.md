@@ -2,7 +2,9 @@
 title: Go标准库中的errors包
 date: '2025-08-07T14:37:36+08:00'
 tags: 
+- Go
 categories: 
+- 笔记
 draft: false
 hiddenFromHomePage: false
 hiddenFromSearch: false
