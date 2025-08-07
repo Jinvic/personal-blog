@@ -5,7 +5,7 @@ tags:
 - Go
 categories: 
 - 笔记
-draft: true
+draft: false
 hiddenFromHomePage: false
 hiddenFromSearch: false
 ---
