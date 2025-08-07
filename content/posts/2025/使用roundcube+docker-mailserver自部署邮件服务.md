@@ -199,7 +199,7 @@ ENABLE_POP3=1
 
 至于pop3和smtp子域名，我懒得配这么多就统一用`mail.jinvic.top`了，只要A记录指向你服务器的IP地址就行。虽然这样的做法并不规范。
 
-## 第三方smtp配置
+## 无法发信处理
 
 > [!NOTE]
 > 经测试，QQ邮箱可以正常接收公网IP发信，无需配置第三方smtp
@@ -216,8 +216,25 @@ outlook-com.olc.protection.outlook.com[52.101.41.20] said: 550 5.7.1
     08DDD06CE15C1A45] (in reply to MAIL FROM command)
 ```
 
-说明ip被反垃圾邮件组织`Spamhaus`禁用了。查询得知类型为 **PBL**（Policy Block List）。进一步了解得知绝大多数的公网IP默认都在 PBL 上，因为这些 IP 不是专用于邮件服务的“静态 MX IP”。
+说明ip被Spamhaus禁用了。查询得知类型为 **PBL**（Policy Block List）。进一步了解得知绝大多数的公网IP默认都在 PBL 上，因为这些 IP 不是专用于邮件服务的“静态 MX IP”。
 
 解决方法是使用第三方smtp中继服务（smtp reply service）。
 
-本来想试试刚刚配置的QQ邮箱代发，但还是被退回了。直接使用QQ邮箱发送好像就没问题。其他国外的第三方代理整起来也挺麻烦的，就这样先将就用吧。
+本来想试试刚刚配置的QQ邮箱代发，但还是被退回了。直接使用QQ邮箱发送好像就没问题。其他国外的第三方代理整起来也挺麻烦的。
+
+另一种解决方法时直接申请解封。
+
+在刚刚的提示中有着查询网址`https://www.spamhaus.org/query/ip/1.92.158.23`，在这个页面也可以操作申请解封。填入自己的邮箱，Spamhaus 将向邮箱发送一封验证邮件，点击邮件中的验证链接就行。
+
+```txt
+Removal successful.
+Your removal request for 1.92.158.23 has been processed. Please allow some time for servers around the world to update their data.
+
+Please note that the resource will be re-listed if malicious activity is detected in the future.
+```
+
+需要注意如果进行恶意活动被检测到会被重新封禁为**SBL**或**XBL**类型，到时候可能就不是一封验证邮件的事了。
+
+## 评分测试
+
+可以使用邮箱评分网站，如[mailgenius](https://www.mailgenius.com)对邮件服务器进行评分，查看哪些地方有问题。
