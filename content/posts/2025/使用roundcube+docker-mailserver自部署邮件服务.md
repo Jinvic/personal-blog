@@ -238,3 +238,16 @@ Please note that the resource will be re-listed if malicious activity is detecte
 ## 评分测试
 
 可以使用邮箱评分网站，如[mailgenius](https://www.mailgenius.com)对邮件服务器进行评分，查看哪些地方有问题。
+
+我在检查时也发现了一些问题：
+
+> The Mail Server IP Address that your email was received from does not have a Reverse DNS pointer (PTR) record that resolves to the correct received-from Mail Server domain.
+
+提示我没有设置PTR记录。我使用的是华为云的DNS解析，直接在控制台添加反向解析就行。添加完成后通过`dig -x <ip> +short`命令验证：
+
+```bash
+dig -x 1.92.158.23 +short
+mail.jinvic.top.
+```
+
+此外还有一些小问题，影响不大就没管。例如top这个TLD不够受信任，我买top域名就是为了便宜，而且迁移也麻烦。以及没有BIMI记录，这个主要是给大公司做品牌推广用的。我一个个人用户也不需要。
