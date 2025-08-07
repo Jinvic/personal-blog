@@ -183,3 +183,41 @@ services:
       - "12078:80"
     restart: always
 ```
+
+## QQ邮箱代收发配置
+
+虽然部署了RoundCube能用于登录邮箱，但需要主动登录检查是否收到新邮件有些麻烦。可以尝试与已有的通知功能绑定。我尝试的是QQ邮箱的代收发服务。
+
+QQ邮箱的收件服务不使用imap，而是pop3。docker-mailserver默认不启用这个功能，需要修改配置文件：
+
+```env
+# Enables POP3 service
+# - **0** => Disabled
+# - 1     => Enabled
+ENABLE_POP3=1
+```
+
+至于pop3和smtp子域名，我懒得配这么多就统一用`mail.jinvic.top`了，只要A记录指向你服务器的IP地址就行。虽然这样的做法并不规范。
+
+## 第三方smtp配置
+
+> [!NOTE]
+> 经测试，QQ邮箱可以正常接收公网IP发信，无需配置第三方smtp
+
+如果你尝试向Google，outlook等常用邮箱发信，可能会被退回，伴随如下提示：
+
+```txt
+outlook-com.olc.protection.outlook.com[52.101.41.20] said: 550 5.7.1
+    Service unavailable, Client host [1.92.158.23] blocked using Spamhaus. To
+    request removal from this list see
+    https://www.spamhaus.org/query/ip/1.92.158.23 (AS3130). [Name=Protocol
+    Filter Agent][AGT=PFA][MxId=11BBA0D9B700029C]
+    [SJ5PEPF000001E9.namprd05.prod.outlook.com 2025-08-07T01:59:44.262Z
+    08DDD06CE15C1A45] (in reply to MAIL FROM command)
+```
+
+说明ip被反垃圾邮件组织`Spamhaus`禁用了。查询得知类型为 **PBL**（Policy Block List）。进一步了解得知绝大多数的公网IP默认都在 PBL 上，因为这些 IP 不是专用于邮件服务的“静态 MX IP”。
+
+解决方法是使用第三方smtp中继服务（smtp reply service）。
+
+本来想试试刚刚配置的QQ邮箱代发，但还是被退回了。直接使用QQ邮箱发送好像就没问题。其他国外的第三方代理整起来也挺麻烦的，就这样先将就用吧。
