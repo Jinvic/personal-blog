@@ -93,7 +93,7 @@ description = "Jinvic's Blog"
     title = "Jinvic's Blog"
     # subtitle shown in home page
     # 主页显示的网站副标题
-    subtitle = "无言无想"
+    subtitle = "无言无思，无记无我"
     # whether to use typeit animation for subtitle
     # 是否为副标题显示打字机动画
     typeit = true
