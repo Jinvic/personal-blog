@@ -127,42 +127,21 @@ POSTMASTER_ADDRESS=jinvic@jinvic.top
 
 ## 邮件客户端 Roundcube
 
-我是直接在1Panel的应用市场装的Roundcube，不过默认配置有点问题我改了下端口，如下：
+### 安装配置
 
-|Key|Value|
-|---|---|
-|IMAP 服务器| mail.jinvic.top|
-|IMAP 端口| 993|
-|SMTP 服务器| mail.jinvic.top|
-|SMTP 端口| 465|
-
-IMAP登录时还需要手动指定SSL/TLS加密方式，我不清楚环境变量怎么改就直接改的配置文件`./data/config/config.docker.inc.php`，缺点是每次重启都会重置。
-
-```txt
-$config['imap_host'] = 'ssl://mail.jinvic.top:993';
-$config['smtp_host'] = 'ssl://mail.jinvic.top:465';
-$config['username_domain'] = 'jinvic.top';
-```
-
-`username_domain`是可选项，配置后如`jinvic@jinvic.top`登录时就可以直接用jinvic作为用户名了，比较方便。
-
-至于SSL/TLS配置，我没有在roundcube里配，而是在反向代理至roundcube服务时加了https配置，实测没有问题。
-
-完成如上配置后就可以登录roundcube客户端访问docker-mailserver服务器，进行收发邮件操作了。
-
-**250624更新**:
-
-在1panel商店安装的roundcube只能使用1panel商店安装的mysql。就个人使用来说单独装个mysql还是太笨重了。为了切换到sqlite还是换成了自部署。参考[官方示例](https://github.com/roundcube/roundcubemail-docker/blob/master/examples/docker-compose-simple.yaml)改改就行。这里给出一个配置示例：
+在1panel商店安装的roundcube只能使用1panel商店安装的mysql。就个人使用来说单独装个mysql还是太笨重了。为了切换到sqlite还是换成了自部署。相关配置项可以看看[dockerhub](https://hub.docker.com/r/roundcube/roundcubemail)页面，docker compose 文件参考[官方示例](https://github.com/roundcube/roundcubemail-docker/blob/master/examples/docker-compose-simple.yaml)改改就行。这里给出自用配置：
 
 ```yml
 services:
   roundcube:
-    image: roundcube/roundcubemail:latest
+    image: roundcube/roundcubemail:latest-apache
     container_name: roundcube
     environment:
-      ROUNDCUBEMAIL_DEFAULT_HOST: "ssl://mail.jinvic.top"
+      # ROUNDCUBEMAIL_DEFAULT_HOST: "ssl://mail.jinvic.top"
+      ROUNDCUBEMAIL_DEFAULT_HOST: "ssl://mailserver"
       ROUNDCUBEMAIL_DEFAULT_PORT: "993"
-      ROUNDCUBEMAIL_SMTP_SERVER: "ssl://mail.jinvic.top"
+      # ROUNDCUBEMAIL_SMTP_SERVER: "ssl://mail.jinvic.top"
+      ROUNDCUBEMAIL_SMTP_SERVER: "ssl://mailserver"
       ROUNDCUBEMAIL_SMTP_PORT: "465"
       ROUNDCUBEMAIL_USERNAME_DOMAIN: "jinvic.top"
       # ROUNDCUBEMAIL_REQUEST_PATH:
@@ -173,8 +152,8 @@ services:
       # ROUNDCUBEMAIL_SPELLCHECK_URI:
       # ROUNDCUBEMAIL_ASPELL_DICTS:
 
-      ROUNDCUBE_DB_TYPE: "sqlite"
-      ROUNDCUBE_DB_NAME: "/var/roundcube/db/roundcube.sqlite"
+      ROUNDCUBEMAIL_DB_TYPE: "sqlite"
+      ROUNDCUBEMAIL_DB_NAME: "roundcube"
     volumes:
       - ./www:/var/www/html
       - ./data/config:/var/roundcube/config
@@ -182,7 +161,84 @@ services:
     ports:
       - "12078:80"
     restart: always
+    networks:
+      - mail_network
+
+networks:
+  mail_network:
+    external: true
 ```
+
+可以看到，我添加了一个docker网络方便容器间通信。在外部创建`mail_network`并在mailserver的docker compose文件中也添加相关配置即可。
+
+### 登录失败
+
+在尝试登录时，可能遇到登录失败，控制台报错如下：
+
+```bash
+/?_task=login:1  POST https://email.jinvic.top/?_task=login 401 (Unauthorized)
+```
+
+容器日志报错如下：
+
+```bash
+IMAP Error: Login failed for jinvic@jinvic.top against mailserver from 172.28.0.1. Could not connect to ssl://mailserver:993: Unknown reason
+```
+
+提示连接到mailserver失败了。但使用openssl连接又是正常的：
+
+```bash
+openssl s_client -connect mailserver:993 -crlf
+...
+* OK [CAPABILITY IMAP4rev1 SASL-IR LOGIN-REFERRALS ID ENABLE IDLE LITERAL+ AUTH=PLAIN AUTH=LOGIN] Dovecot (Debian) ready.
+```
+
+说明Roundcube 的 PHP 环境无法通过 fsockopen 或 stream_socket_client 建立 SSL 连接到 mailserver:993。
+
+可能是因为我的证书来自Let's Encrypt。为了解决这个问题，可以强制禁用证书验证。毕竟我是通过docker内部网络进行通信的。
+
+在`./data/config`下创建`config.local.inc.php`并写入：
+
+```php
+<?php
+
+// /var/roundcube/config/config.local.inc.php
+
+// ------------------------------
+// 修复：IMAP/SMTP SSL 连接失败
+// ------------------------------
+$config['imap_conn_options'] = array(
+    'ssl' => array(
+        'verify_peer'      => false,
+        'verify_peer_name' => false,
+        'allow_self_signed' => true,
+    ),
+);
+$config['smtp_conn_options'] = array(
+    'ssl' => array(
+        'verify_peer'      => false,
+        'verify_peer_name' => false,
+        'allow_self_signed' => true,
+    ),
+);
+
+// ------------------------------
+// 调试配置（可选）
+// ------------------------------
+// $config['debug_level'] = 5;
+// $config['log_driver'] = 'stdout';
+// $config['log_logins'] = true;
+// $config['smtp_log'] = true;
+
+// ------------------------------
+// 其他安全和用户体验设置
+// ------------------------------
+// $config['des_key'] = 'your-secret-key-change-this-1234567890'; // 生成一个随机密钥
+// $config['product_name'] = 'My Webmail';
+// $config['temp_dir'] = '/tmp/roundcube-temp';
+```
+
+记得确认一下是否正确挂载到了`/var/roundcube/config/`。
 
 ## QQ邮箱代收发配置
 
@@ -222,7 +278,7 @@ outlook-com.olc.protection.outlook.com[52.101.41.20] said: 550 5.7.1
 
 本来想试试刚刚配置的QQ邮箱代发，但还是被退回了。直接使用QQ邮箱发送好像就没问题。其他国外的第三方代理整起来也挺麻烦的。
 
-另一种解决方法时直接申请解封。
+另一种解决方法是直接申请解封。
 
 在刚刚的提示中有着查询网址`https://www.spamhaus.org/query/ip/1.92.158.23`，在这个页面也可以操作申请解封。填入自己的邮箱，Spamhaus 将向邮箱发送一封验证邮件，点击邮件中的验证链接就行。
 
