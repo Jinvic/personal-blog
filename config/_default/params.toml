@@ -461,24 +461,24 @@ simple_view = false
 # giscus comment 评论系统设置 (https://giscus.app/)
 [page.comment.giscus]
 enable = false
-# owner/repo
-dataRepo = ""
-dataRepoId = ""
-dataCategory = ""
-dataCategoryId = ""
-dataMapping = "pathname"
+# Jinvic/personal-blog
+dataRepo = "Jinvic/personal-blog"
+dataRepoId = "R_kgDOPBgHFw"
+dataCategory = "Announcements"
+dataCategoryId = "DIC_kwDOPBgHF84Cu1Cs"
+dataMapping = "og:title"
 dataStrict = "0"
 dataReactionsEnabled = "1"
 dataEmitMetadata = "0"
-dataInputPosition = "bottom"
+dataInputPosition = "top"
 lightTheme = "light"
 darkTheme = "dark"
-dataLang = "en"
+dataLang = "zh-CN"
 dataLoading = "lazy"
 # artalk comment config (https://artalk.js.org/guide/frontend/config.html)
 # artalk comment 评论系统设置 (https://artalk.js.org/guide/frontend/config.html)
 [page.comment.artalk]
-enable = true
+enable = false
 server = "https://comment.jinvic.top"
 site = "Jinvic Blog"
 lite = false
