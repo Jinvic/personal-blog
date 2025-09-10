@@ -5,7 +5,7 @@ tags:
 - Go
 categories: 
 - 知识点
-draft: true
+draft: false
 hiddenFromHomePage: false
 hiddenFromSearch: false
 ---
