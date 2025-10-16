@@ -193,7 +193,7 @@ err = ch.PublishWithContext(ctx,
 
 扇出交换机非常适合消息的广播路由。
 
-![fanout exchange](https://rabbitmq.cn/assets/images/exchange-fanout-7155e1fd567292ac471a6b60711c4fc4.png)
+![fanout exchange](/post-images/go消息队列库-RabbitMQ-笔记/1.png)
 
 #### direct
 
@@ -201,7 +201,7 @@ err = ch.PublishWithContext(ctx,
 
 直接交换机非常适合消息的单播路由。它们也可以用于多播路由。
 
-![direct exchange](https://rabbitmq.cn/assets/images/exchange-direct-a7628306f367d189dac98aabc4865085.png)
+![direct exchange](/post-images/go消息队列库-RabbitMQ-笔记/2.png)
 
 #### topic
 
