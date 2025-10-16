@@ -1167,10 +1167,310 @@ func main {
 
 不过这样做和 Go 语言简单直接的编程哲学背道而驰了。
 
+## 4. RPC和Protobuf
+
+### 4.1 RPC 入门
+
+#### 4.1.1 RPC 版 “Hello, World”
+
+给出了一个最简的rpc实现：
+
+```go
+// 服务端
+type HelloService struct {}
+
+func (p *HelloService) Hello(request string, reply *string) error {
+    *reply = "hello:" + request
+    return nil
+}
+
+func main() {
+    rpc.RegisterName("HelloService", new(HelloService))
+
+    listener, err := net.Listen("tcp", ":1234")
+    if err != nil {
+        log.Fatal("ListenTCP error:", err)
+    }
+
+    conn, err := listener.Accept()
+    if err != nil {
+        log.Fatal("Accept error:", err)
+    }
+
+    rpc.ServeConn(conn)
+}
+```
+
+首先看到`HelloService.Hello`方法，这是go的rpc接收器方法格式：
+
+- 导出类型的导出方法
+- 两个参数，均为导出类型
+- 第二个参数是指针
+- 一个返回值，类型为 error
+
+然后是`rpc.RegisterName`方法，用于命名注册rpc服务。如果直接使用`rpc.Register`将使用类型名作为服务名：
+
+```go
+// 方式1：使用类型名作为服务名
+rpc.Register(new(HelloService)) // 服务名会是 "HelloService"
+
+// 方式2：自定义服务名
+rpc.RegisterName("MyCustomName", new(HelloService)) // 服务名是 "MyCustomName"
+```
+
+此外，直接使用rpc会注册到全局的`defaultServer`。也可以使用`server := rpc.NewServer()`手动实例化一个server。
+
+```go
+// 客户端
+func main() {
+    client, err := rpc.Dial("tcp", "localhost:1234")
+    if err != nil {
+        log.Fatal("dialing:", err)
+    }
+
+    var reply string
+    err = client.Call("HelloService.Hello", "hello", &reply)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    fmt.Println(reply)
+}
+```
+
+客户端也有多种实例化方式，最简单的就是直接Dial。实例化后通过`Call`调用远程方法：
+
+```go
+func (client *Client) Call(serviceMethod string, args any, reply any) error
+```
+
+### 4.1.2 更安全的 RPC 接口
+
+为了逻辑解耦和后续维护，我们往往需要定义一个规范来进行一定的抽象和封装。由于这个规范一定程度是服务端与客户端共用的，所以可以放到一个共享包中，结构如下：
+
+```bash
+rpctest/
+├── go.mod
+├── go.sum
+├── api/                    # API 定义（共享接口）
+│   └── v1/
+│       └── hello_service.go
+├── cmd/                    # 可执行程序入口
+│   ├── server/
+│   │   └── main.go
+│   └── client/
+│       └── main.go
+```
+
+```go
+// api/v1/hello_service.go
+
+package v1
+
+import "net/rpc"
+
+// 服务名称常量，使用反向域名避免冲突
+const (
+    HelloServiceName = "com.example.hello.v1.HelloService"
+)
+
+// HelloRequest 请求结构体
+type HelloRequest struct {
+    Name string `json:"name"`
+}
+
+// HelloResponse 响应结构体
+type HelloResponse struct {
+    Message string `json:"message"`
+}
+
+// HelloServiceInterface 定义服务接口
+type HelloServiceInterface interface {
+    // Hello 方法：接收请求，返回响应
+    Hello(request *HelloRequest, reply *HelloResponse) error
+}
+
+// Server 实现服务端逻辑
+type HelloService struct{}
+
+// Hello 实现接口方法
+func (s *HelloService) Hello(request *HelloRequest, reply *HelloResponse) error {
+    if request.Name == "" {
+        request.Name = "world"
+    }
+    reply.Message = "Hello, " + request.Name + "!"
+    return nil
+}
+
+// Client 客户端封装
+type HelloServiceClient struct {
+    *rpc.Client
+}
+
+// NewHelloServiceClient 创建客户端
+func NewHelloServiceClient(client *rpc.Client) *HelloServiceClient {
+    return &HelloServiceClient{Client: client}
+}
+
+// Hello 调用远程服务
+func (c *HelloServiceClient) Hello(request *HelloRequest, reply *HelloResponse) error {
+    return c.Client.Call(HelloServiceName+".Hello", request, reply)
+}
+
+// 编译时接口检查
+var _ HelloServiceInterface = (*HelloService)(nil)
+var _ HelloServiceInterface = (*HelloServiceClient)(nil)
+
+```
+
+```go
+// cmd/server/server.go
+package main
+
+import (
+    "log"
+    "net"
+    "net/rpc"
+    v1 "rpctest/api/v1"
+)
+
+func main() {
+    rpc.RegisterName(v1.HelloServiceName, &v1.HelloService{})
+
+    listener, err := net.Listen("tcp", ":1234")
+    if err != nil {
+        log.Fatal("ListenTCP error:", err)
+    }
+
+    for {
+        conn, err := listener.Accept()
+        if err != nil {
+            log.Fatal("Accept error:", err)
+        }
+        go rpc.ServeConn(conn)
+    }
+}
+```
+
+```go
+// cmd/client/client.go
+package main
+
+import (
+    "fmt"
+    "log"
+    "net/rpc"
+    v1 "rpctest/api/v1"
+)
+
+func main() {
+    rpcClient, err := rpc.Dial("tcp", "localhost:1234")
+    if err != nil {
+        log.Fatal("dialing:", err)
+    }
+
+    client := v1.NewHelloServiceClient(rpcClient)
+    request := &v1.HelloRequest{Name: "Go Developer"}
+    var response v1.HelloResponse
+
+    err = client.Hello(request, &response)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    fmt.Println(response.Message)
+}
+```
+
+### 4.1.3 跨语言的 RPC
+
+标准库的 RPC 默认采用 Go 语言特有的 gob 编码，使得其他语言调用go实现的rpc并不方便。我们可以更换编码方式来实现跨语言兼容。如下是json编码示例：
+
+```go
+// 服务端
+
+    // 其余逻辑略
+
+    for {
+        conn, err := listener.Accept()
+        if err != nil {
+            log.Fatal("Accept error:", err)
+        }
+
+        // go rpc.ServeConn(conn)
+        go rpc.ServeCodec(jsonrpc.NewServerCodec(conn)) // 使用json编解码器
+    }
+```
+
+```go
+// 客户端
+
+    // 其余逻辑略
+
+    // rpcClient, err := rpc.Dial("tcp", "localhost:1234")
+
+    // 手动创建tcp连接
+    conn, err := net.Dial("tcp", "localhost:1234")
+    if err != nil {
+        log.Fatal("net.Dial:", err)
+    }
+
+    // 使用json编解码器
+    client := rpc.NewClientWithCodec(jsonrpc.NewClientCodec(conn)) 
+```
+
+### 4.1.4 Http 上的 RPC
+
+虽然jsonrpc已经提供了跨语言兼容性，tcp+jsonrpc可用。但http相比tcp有着标准化的传输协议、更好的工具链支持和json支持等，实际应用中常用http+jsonrpc进行跨语言通信。
+
+```go
+// 服务端
+func main() {
+    rpc.RegisterName("HelloService", new(HelloService))
+
+    http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+        w.Header().Set("Content-Type", "application/json")
+        var conn io.ReadWriteCloser = struct {
+            io.Writer
+            io.ReadCloser
+        }{
+            ReadCloser: r.Body,
+            Writer:     w,
+        }
+
+        rpc.ServeRequest(jsonrpc.NewServerCodec(conn))
+    })
+
+    http.ListenAndServe(":1234", nil)
+}
+```
+
+```go
+// 客户端
+func main() {
+    // // 连接到 HTTP JSON-RPC 服务
+    client, err := rpc.DialHTTP("tcp", "localhost:1234")
+    if err != nil {
+        log.Fatal("Dial error:", err)
+    }
+    defer client.Close()
+
+    var reply string
+    err = client.Call("HelloService.Hello", "world", &reply)
+    if err != nil {
+        log.Fatal("Call error:", err)
+    }
+    
+    fmt.Println(reply) // 输出: hello:world
+}
+```
+
+需要注意的是，JSON-RPC 2.0 标准并不包含http的路径路由，而是通过rpc内部的方法名（如`HelloService.Hello`）实现路由功能。所以服务端注册在根路径`/`下，客户端`rpc.DialHTTP`的默认访问路径也是`/`。这是各语言的通用做法。虽然也有gRPC等框架支持 HTTP 路径路由，但并不属于JSON-RPC标准。
+
 ## Todo List
 
 - [ ] 4. RPC和Protobuf
 - [ ] 5. Go和Web
 - [ ] 6. 分布式系统
 
-Last Update: 2025-08-07 15:53:10
+Last Update: 2025-10-16 11:30
