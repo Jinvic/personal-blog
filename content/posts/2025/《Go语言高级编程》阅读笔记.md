@@ -1467,6 +1467,16 @@ func main() {
 
 需要注意的是，JSON-RPC 2.0 标准并不包含http的路径路由，而是通过rpc内部的方法名（如`HelloService.Hello`）实现路由功能。所以服务端注册在根路径`/`下，客户端`rpc.DialHTTP`的默认访问路径也是`/`。这是各语言的通用做法。虽然也有gRPC等框架支持 HTTP 路径路由，但并不属于JSON-RPC标准。
 
+## 4.2 Protobuf
+
+> Protobuf 是 Protocol Buffers 的简称，它是 Google 公司开发的一种数据描述语言，并于 2008 年对外开源。Protobuf 刚开源时的定位类似于 XML、JSON 等数据描述语言，通过附带工具生成代码并实现将结构化数据序列化的功能。但是我们更关注的是 Protobuf 作为接口规范的描述语言，可以作为设计安全的跨语言 PRC 接口的基础工具。
+
+在上一节中，我们了解到可以使用json编码进行跨语言通信，而`protobuf`同样可以做到这一点。相比于json，protobuf的优势在于统一的**数据定义**，不同的语言可以使用同一套protobuf，这点上protobuf相当于对标的是`json schema`。但相对应的，protobuf在别的地方付出了额外的复杂度作为代价，即在特定语言中实际使用时需要先生成对应语言的代码，以及语法上有一定限制。我以前也写过一篇关于protobuf的简单[笔记](../2024/ProtoBuf笔记.md)，在此就不作展开。
+
+### 4.2.1 Protobuf 入门
+
+简单介绍protobuf的语法和使用方法。
+
 ## Todo List
 
 - [ ] 4. RPC和Protobuf
