@@ -11,7 +11,7 @@ hiddenFromSearch: false
 ---
 # Minio使用S3协议时自定义Virtual Hosted Style
 
-遇到一个minio使用COS作为s3存储的问题。本来以为是配置项的问题，各种方式填了个遍还是不行。最后狠下新来读源码，发现minio在构造请求url时有`virtual host style`和`path style`两种方式：
+遇到一个minio使用COS作为s3存储时，多出来一个桶名路径的问题。本来以为是配置项的问题，各种方式填了个遍还是不行。最后狠下新来读源码，发现minio在构造请求url时有`virtual host style`和`path style`两种方式：
 
 ```go
     urlStr := scheme + "://" + host + "/"
