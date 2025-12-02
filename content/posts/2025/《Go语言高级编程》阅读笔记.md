@@ -1467,15 +1467,175 @@ func main() {
 
 需要注意的是，JSON-RPC 2.0 标准并不包含http的路径路由，而是通过rpc内部的方法名（如`HelloService.Hello`）实现路由功能。所以服务端注册在根路径`/`下，客户端`rpc.DialHTTP`的默认访问路径也是`/`。这是各语言的通用做法。虽然也有gRPC等框架支持 HTTP 路径路由，但并不属于JSON-RPC标准。
 
-## 4.2 Protobuf
+### 4.2 Protobuf
 
 > Protobuf 是 Protocol Buffers 的简称，它是 Google 公司开发的一种数据描述语言，并于 2008 年对外开源。Protobuf 刚开源时的定位类似于 XML、JSON 等数据描述语言，通过附带工具生成代码并实现将结构化数据序列化的功能。但是我们更关注的是 Protobuf 作为接口规范的描述语言，可以作为设计安全的跨语言 PRC 接口的基础工具。
 
 在上一节中，我们了解到可以使用json编码进行跨语言通信，而`protobuf`同样可以做到这一点。相比于json，protobuf的优势在于统一的**数据定义**，不同的语言可以使用同一套protobuf，这点上protobuf相当于对标的是`json schema`。但相对应的，protobuf在别的地方付出了额外的复杂度作为代价，即在特定语言中实际使用时需要先生成对应语言的代码，以及语法上有一定限制。我以前也写过一篇关于protobuf的简单[笔记](../2024/ProtoBuf笔记.md)，在此就不作展开。
 
-### 4.2.1 Protobuf 入门
+#### 4.2.1 Protobuf 入门
 
-简单介绍protobuf的语法和使用方法。
+简单介绍protobuf的语法和使用方法。实践部分很简略，这里整理一下，给出一个最简示例：
+
+```protobuf
+// proto/hello.proto
+
+syntax = "proto3";
+
+package hello;
+
+option go_package = "proto/gen/hello";
+
+service HelloService {
+  rpc Hello(HelloRequest) returns (HelloResponse);
+}
+
+// The request message containing the user's name.
+message HelloRequest {
+  string name = 1;
+}
+
+// The response message containing the greetings
+message HelloResponse {
+  string message = 1;
+}
+
+```
+
+```bash
+# 略：安装protobuf
+
+# 将插件作为命令行工具安装
+go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+# 略，写入proto/hello.proto
+
+# 生成go代码
+protoc --go_out=. --go-grpc_out=. proto/*.proto
+
+# 初始化go项目
+go mod init test
+go mod tidy
+```
+
+```txt
+./
+├── go.mod
+├── go.sum
+└── proto/
+    ├── gen/
+    │   └── hello/
+    │       ├── hello.pb.go
+    │       └── hello_grpc.pb.go
+    └── hello.proto
+```
+
+如上，proto文件写在`/proto`目录下，代码生成在`/proto/gen/服务名`目录下，可以作为go包引用。路径也可以自由调整。
+
+然后实现客户端和服务端去使用grpc。可以使用`//go:generate`指令将protobuf编译命令嵌入程序。
+
+```go
+//go:generate protoc --go_out=. --go-grpc_out=. proto/*.proto
+// cmd/server/main.go
+package main
+
+import (
+    "context"
+    "log"
+    "net"
+    hello "test2/proto/gen/hello"
+
+    "google.golang.org/grpc"
+)
+
+type helloServer struct {
+    hello.UnimplementedHelloServiceServer
+}
+
+func (s *helloServer) Hello(ctx context.Context, req *hello.HelloRequest) (*hello.HelloResponse, error) {
+    log.Printf("Received: %v\n", req.GetName())
+    return &hello.HelloResponse{Message: "Hello " + req.GetName()}, nil
+}
+
+func main() {
+    s := grpc.NewServer()
+    hello.RegisterHelloServiceServer(s, &helloServer{})
+
+    lis, err := net.Listen("tcp", ":1234")
+    if err != nil {
+        log.Fatalf("failed to listen: %v", err)
+    }
+    log.Printf("server listening at %v", lis.Addr())
+
+    if err := s.Serve(lis); err != nil {
+        log.Fatalf("failed to serve: %v", err)
+    }
+}
+```
+
+```go
+//go:generate protoc --go_out=. --go-grpc_out=. proto/*.proto
+// cmd/client/main.go
+package main
+
+import (
+    "context"
+    "log"
+    hello "test2/proto/gen/hello"
+    "time"
+
+    "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials/insecure"
+)
+
+func main() {
+    conn, err := grpc.NewClient(":1234", grpc.WithTransportCredentials(insecure.NewCredentials()))
+    if err != nil {
+        log.Fatalf("did not connect: %v", err)
+    }
+    defer conn.Close()
+    c := hello.NewHelloServiceClient(conn)
+
+    ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+    defer cancel()
+    r, err := c.Hello(ctx, &hello.HelloRequest{Name: "test"})
+    if err != nil {
+        log.Fatalf("could not greet: %v", err)
+    }
+    log.Printf("Greeting: %s", r.GetMessage())
+}
+
+```
+
+```txt
+./
+├── cmd/
+│   ├── client/
+│   │   └── main.go
+│   └── server/
+│       └── main.go
+├── go.mod
+├── go.sum
+└── proto/
+    ├── gen/
+    │   └── hello/
+    │       ├── hello.pb.go
+    │       └── hello_grpc.pb.go
+    └── hello.proto
+```
+
+```bash
+# 在两个不同终端先后执行
+go run cmd/server/.
+go run cmd/client/.
+```
+
+#### 4.2.2 定制代码生成插件
+
+#### 4.2.3 自动生成完整的 RPC 代码
+
+定制protobuf插件以生成不同rpc协议的go代码。如上示例使用的是grpc，这两章则是解析了grpc源码来自定义代码生成逻辑。不过感觉我没什么自定义需求，现成的grpc/kratos够用了，搁置。
 
 ## Todo List
 
@@ -1483,4 +1643,4 @@ func main() {
 - [ ] 5. Go和Web
 - [ ] 6. 分布式系统
 
-Last Update: 2025-10-16 11:30
+Last Update: 2025-12-02 17:38
