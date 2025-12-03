@@ -1637,6 +1637,194 @@ go run cmd/client/.
 
 定制protobuf插件以生成不同rpc协议的go代码。如上示例使用的是grpc，这两章则是解析了grpc源码来自定义代码生成逻辑。不过感觉我没什么自定义需求，现成的grpc/kratos够用了，搁置。
 
+### 4.3 玩转 RPC
+
+#### 4.3.1 客户端 RPC 的实现原理
+
+介绍`rpc.Client`的同步异步两种调用方式。其中同步调用方法`rpc.Client.Call()`是在内部阻塞地调用了异步调用方法`rpc.Client.Do()`。
+
+```go
+// 同步调用
+func (client *Client) Call(
+    serviceMethod string, args interface{},
+    reply interface{},
+) error {
+    call := <-client.Go(serviceMethod, args, reply, make(chan *Call, 1)).Done
+    return call.Error
+}
+
+// 异步调用
+func (client *Client) Go(
+    serviceMethod string, args interface{},
+    reply interface{},
+    done chan *Call,
+) *Call {
+    call := new(Call)
+    call.ServiceMethod = serviceMethod
+    call.Args = args
+    call.Reply = reply
+    call.Done = make(chan *Call, 10) // buffered.
+
+    client.send(call)
+    return call
+}
+```
+
+异步调用示例如下：
+
+```go
+func doClientWork(client *rpc.Client) {
+    helloCall := client.Go("HelloService.Hello", "hello", new(string), nil)
+
+    // do some thing
+
+    helloCall = <-helloCall.Done
+    if err := helloCall.Error; err != nil {
+        log.Fatal(err)
+    }
+
+    args := helloCall.Args.(string)
+    reply := helloCall.Reply.(*string)
+    fmt.Println(args, *reply)
+}
+
+```
+
+#### 4.3.2 基于 RPC 实现 Watch 功能
+
+示例有很多问题，建议直接跳过这一节。主要`net/rpc`本质是**函数远程调用**，一次 Call 对应一次 Reply，无法实现“服务端主动推送”或“持续监听”。如果有类似需求，可以考虑gRPC + Server-Side Streaming技术栈。
+
+#### 4.3.3 反向 RPC
+
+相比于标准RPC，反向RPC主要是建立连接的方式不同，由服务提供者主动发起连接而不是被动接受连接请求。连接建立后操作就和标准RPC差不多了。
+
+标准RPC：
+
+服务端：Listen + Accept + ServeConn
+客户端：Dial + Call
+
+反向RPC：
+
+服务提供者：Dial + ServeConn（主动连别人，然后提供服务）
+调用者：Listen + Accept + NewClient + Call（被人连，然后调用对方）
+
+示例如下：
+
+```go
+// 服务端
+func main() {
+    rpc.Register(new(HelloService))
+
+    for {
+        conn, _ := net.Dial("tcp", "localhost:1234")
+        if conn == nil {
+            time.Sleep(time.Second)
+            continue
+        }
+
+        rpc.ServeConn(conn)
+        conn.Close()
+    }
+}
+
+// 客户端
+func main() {
+    listener, err := net.Listen("tcp", ":1234")
+    if err != nil {
+        log.Fatal("ListenTCP error:", err)
+    }
+
+    clientChan := make(chan *rpc.Client)
+
+    go func() {
+        for {
+            conn, err := listener.Accept()
+            if err != nil {
+                log.Fatal("Accept error:", err)
+            }
+
+            clientChan <- rpc.NewClient(conn)
+        }
+    }()
+
+    doClientWork(clientChan)
+}
+
+func doClientWork(clientChan <-chan *rpc.Client) {
+    client := <-clientChan
+    defer client.Close()
+
+    var reply string
+    err := client.Call("HelloService.Hello", "hello", &reply)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    fmt.Println(reply)
+}
+```
+
+一个很常见的例子是反向代理。你在自己的电脑上跑了一个服务想给其他人调用，但没有公网ip别人没办法直接连接到你。就由你主动去连别人，连接建立后再在这个连接上提供服务。
+
+#### 4.3.4 上下文信息
+
+net/rpc本身并没有专门的上下文机制，只能通过为每个连接创建独立service实例来进行隔离。看看示例就行，生产环境一般不这么用。
+
+```go
+type HelloService struct {
+    conn    net.Conn
+    isLogin bool
+}
+
+func (p *HelloService) Login(request string, reply *string) error {
+    if request != "user:password" {
+        return fmt.Errorf("auth failed")
+    }
+    log.Println("login ok")
+    p.isLogin = true
+    return nil
+}
+
+func (p *HelloService) Hello(request string, reply *string) error {
+    if !p.isLogin {
+        return fmt.Errorf("please login")
+    }
+    *reply = "hello:" + request + ", from" + p.conn.RemoteAddr().String()
+    return nil
+}
+
+func main() {
+    listener, err := net.Listen("tcp", ":1234")
+    if err != nil {
+        log.Fatal("ListenTCP error:", err)
+    }
+
+    for {
+        conn, err := listener.Accept()
+        if err != nil {
+            log.Fatal("Accept error:", err)
+        }
+
+        go func() {
+            defer conn.Close()
+
+            p := rpc.NewServer()
+            p.Register(&HelloService{conn: conn})
+            p.ServeConn(conn)
+        } ()
+    }
+}
+```
+
+这样做也不是不行，但现代RPC范式强调无状态服务 + 显式上下文传递，把状态放在外部而不是服务实例内部。例如gRPC的方法签名就显示传递了一个`context.Context`变量：
+
+```go
+func (s *server) Hello(ctx context.Context, req *pb.HelloRequest) (*pb.HelloResponse, error)
+```
+
+总的来说，`net/rpc`只是一个简单的rpc框架实现，适合学习或内部使用。生产环境还是`gRPC`
+这样的成熟方案比较合适。
+
 ## Todo List
 
 - [ ] 4. RPC和Protobuf
