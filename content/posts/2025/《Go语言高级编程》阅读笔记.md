@@ -561,7 +561,7 @@ func main() {
 
 > 发布订阅（publish-and-subscribe）模型通常被简写为 pub/sub 模型。在这个模型中，消息生产者成为发布者（publisher），而消息消费者则成为订阅者（subscriber），生产者和消费者是 M:N 的关系。在传统生产者和消费者模型中，是将消息发送到一个队列中，而发布订阅模型则是将消息发布给一个主题。
 
-示例代码怪怪的，订阅者只能订阅一个发布者的一个主题。干脆自己手搓一个示例：[Jinvic/pubsub-example 发布订阅模型示例](https://github.com/Jinvic/pubsub-example)。
+示例代码怪怪的，订阅者只能订阅一个发布者的一个主题。干脆自己手搓一个示例：[Jinvic/pubsub 发布订阅模型示例](https://github.com/Jinvic/pubsub)。
 
 #### 1.6.4 控制并发数
 
@@ -1825,10 +1825,198 @@ func (s *server) Hello(ctx context.Context, req *pb.HelloRequest) (*pb.HelloResp
 总的来说，`net/rpc`只是一个简单的rpc框架实现，适合学习或内部使用。生产环境还是`gRPC`
 这样的成熟方案比较合适。
 
+### 4.4 gRPC 入门
+
+#### 4.4.1 gRPC 技术栈
+
+> 最底层为 TCP 或 Unix Socket 协议，在此之上是 HTTP/2 协议的实现，然后在 HTTP/2 协议之上又构建了针对 Go 语言的 gRPC 核心库。应用程序通过 gRPC 插件生产的 Stub 代码和 gRPC 核心库通信，也可以直接和 gRPC 核心库通信。
+
+看不懂，不用在意。
+
+这里说的**Stub代码**就是我们运行`proto`命令指定grpc插件时生成的`_grpc.pb.go`文件。我们一般都是通过这个封装好的内容调用gRPC核心库。
+
+#### 4.4.2 gRPC 入门
+
+一个gRPC的简单实例。我在之前已经实现过类似的，见[4.2.1 Protobuf 入门](#421-protobuf-入门)。
+
+#### 4.4.3 gRPC 流
+
+这里以双向流为例，客户端流和服务端流都是双向流的特例。
+
+要启用流特性，需要在声明方法时添加`stream`关键字进行标识：
+
+```protobuf
+service ChatService {
+  rpc Chat(stream ChatRequest) returns (stream ChatResponse);
+}
+```
+
+生成代码后，可以发现Chat方法使用的参数不再是我们定义的`ChatRequest`和`ChatResponse`，而是一个专门的流接口`grpc.BidiStreamingServer[ChatRequest, ChatResponse]`。
+
+```go
+type ChatServiceServer interface {
+    Chat(grpc.BidiStreamingServer[ChatRequest, ChatResponse]) error
+    mustEmbedUnimplementedChatServiceServer()
+}
+type ChatServiceClient interface {
+    Chat(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ChatRequest, ChatResponse], error)
+}
+```
+
+查看`grpc.BidiStreamingServer`的定义，可以发现它实现了`Send`和`Recv`方法，分别用于发送和接受消息。
+
+```go
+type BidiStreamingServer[Req any, Res any] interface {
+    Recv() (*Req, error)
+    Send(*Res) error
+    ServerStream
+}
+```
+
+完整示例如下：
+
+```protobuf
+// proto/chat.ptoto
+syntax = "proto3";
+
+package chat;
+option go_package = "proto/gen/chat;chat";
+
+service ChatService {
+  rpc Chat(stream ChatRequest) returns (stream ChatResponse);
+}
+
+message Message {
+  string content = 1;
+}
+
+message ChatRequest {
+  Message msg = 1;
+}
+
+message ChatResponse {
+  Message msg = 1;
+}
+```
+
+```go
+// cmd/server/main.go
+type server struct {
+    pb.UnimplementedChatServiceServer
+}
+
+func (s *server) Chat(stream pb.ChatService_ChatServer) error {
+    for {
+        req, err := stream.Recv()
+        if err != nil {
+            return err
+        }
+        content := req.Msg.Content
+        fmt.Printf("Received: %s\n", content)
+        resp := &pb.ChatResponse{
+            Msg: &pb.Message{
+                Content: "Echo: " + content,
+            },
+        }
+        if err := stream.Send(resp); err != nil {
+            return err
+        }
+    }
+}
+
+func main() {
+    lis, err := net.Listen("tcp", ":1234")
+    if err != nil {
+        log.Fatalf("failed to listen: %v", err)
+    }
+    s := grpc.NewServer()
+    pb.RegisterChatServiceServer(s, &server{})
+    fmt.Println("Server listening on :1234")
+    if err := s.Serve(lis); err != nil {
+        log.Fatalf("failed to serve: %v", err)
+    }
+}
+
+```
+
+```go
+// cmd/client/main.go
+func main() {
+    conn, err := grpc.NewClient("localhost:1234", grpc.WithTransportCredentials(insecure.NewCredentials()))
+    if err != nil {
+        log.Fatalf("did not connect: %v", err)
+    }
+    defer conn.Close()
+
+    client := pb.NewChatServiceClient(conn)
+
+    stream, err := client.Chat(context.Background())
+    if err != nil {
+        log.Fatalf("error creating stream: %v", err)
+    }
+
+    // 启动 goroutine 发送消息
+    go func() {
+        msgs := []string{"Hello", "gRPC", "Bidirectional Streaming!"}
+        for _, m := range msgs {
+            fmt.Printf("Sending: %s\n", m)
+            req := &pb.ChatRequest{
+                Msg: &pb.Message{
+                    Content: m,
+                },
+            }
+            stream.Send(req)
+            time.Sleep(500 * time.Millisecond)
+        }
+        stream.CloseSend()
+    }()
+
+    // 接收服务端响应
+    for {
+        resp, err := stream.Recv()
+        if err != nil {
+            break // 流结束或出错
+        }
+        fmt.Printf("Received: %s\n", resp.Msg.Content)
+    }
+}
+
+```
+
+```txt
+./
+├── cmd/
+│   ├── client/
+│   │   └── main.go
+│   └── server/
+│       └── main.go
+├── go.mod
+├── go.sum
+└── proto/
+    ├── gen/
+    │   └── chat/
+    │       ├── hello.pb.go
+    │       └── hello_grpc.pb.go
+    └── hello.proto
+```
+
+```bash
+# 生成代码
+protoc --go_out=. --go-grpc_out=. proto/*.proto
+
+# 在两个不同终端先后执行
+go run ./cmd/server
+go run ./cmd/client
+```
+
+#### 4.4.4 发布和订阅模式
+
+通过双向流实现的发布订阅服务实践，感兴趣可以试试。示例使用的docker项目的`"github.com/moby/moby/pkg/pubsub"`。正好我在之前[1.6.3 发布订阅模型](#163-发布订阅模型)自己搓了一个pubsub，就用这个来实现试试吧。作为示例代码更新到[examples](https://github.com/Jinvic/pubsub/tree/master/examples/pubsub-grpc)里。
+
 ## Todo List
 
 - [ ] 4. RPC和Protobuf
 - [ ] 5. Go和Web
 - [ ] 6. 分布式系统
 
-Last Update: 2025-12-02 17:38
+Last Update: 2025-12-05 14:06
