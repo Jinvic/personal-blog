@@ -37,3 +37,4 @@ jobs:
         password: ${{ secrets.FTP_PASS }}
         local-dir: ${{ github.workspace }}/public/
         server-dir: ./
+        dangerous-clean-slate: true
