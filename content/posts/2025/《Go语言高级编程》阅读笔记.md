@@ -2013,6 +2013,150 @@ go run ./cmd/client
 
 通过双向流实现的发布订阅服务实践，感兴趣可以试试。示例使用的docker项目的`"github.com/moby/moby/pkg/pubsub"`。正好我在之前[1.6.3 发布订阅模型](#163-发布订阅模型)自己搓了一个pubsub，就用这个来实现试试吧。作为示例代码更新到[examples](https://github.com/Jinvic/pubsub/tree/master/examples/pubsub-grpc)里。
 
+### 4.5 gRPC 进阶
+
+#### 4.5.1 证书认证
+
+介绍适合传入证书实现TLS加密。
+
+首先是使用`openssl`生成证书。需要注意的是，Go 1.15+默认不再信任仅使用 **Common Name (CN)** 字段的证书，而要求使用 **Subject Alternative Name (SAN)** 扩展字段来指定主机名。所以书上的命令生成的证书是不可用的。
+
+**无ca验证**：
+
+直接生成一个证书文件：
+
+```bash
+openssl genrsa -out server.key 2048
+openssl req -new -x509 -days 3650 \
+    -subj "/C=GB/L=China/O=grpc-server/CN=server.grpc.io" \
+    -addext "subjectAltName = DNS:server.grpc.io,DNS:localhost,IP:127.0.0.1" \
+    -key server.key \
+    -out server.crt
+```
+
+如果服务端和客户端都使用同一个证书文件，就可以简单实现TLS验证：
+
+```go
+// server
+    creds, err := credentials.NewServerTLSFromFile(
+        "../../server.crt",
+        "../../server.key")
+    if err != nil {
+        log.Fatal(err)
+    }
+    s := grpc.NewServer(grpc.Creds(creds))
+
+// client
+    creds, err := credentials.NewClientTLSFromFile(
+        "../../server.crt",
+        "server.grpc.io")
+    if err != nil {
+        log.Fatal(err)
+    }
+    conn, err := grpc.NewClient("localhost:1234",
+        grpc.WithTransportCredentials(creds))
+    if err != nil {
+        log.Fatalf("did not connect: %v", err)
+    }
+    defer conn.Close()
+```
+
+**有ca验证**：
+
+服务端和客户端如果使用同一个证书文件需要先传输证书文件，而这个过程是有风险的。所以正式生产环境时会使用一个安全可靠的根证书对服务端和客户端证书分别进行签名，这样两者就可以验证对方证书的有效性。
+
+```bash
+# 生成根证书
+openssl genrsa -out ca.key 2048
+openssl req -new -x509 -days 3650 \
+    -subj "/C=GB/L=China/O=gobook/CN=gRPC CA" \
+    -key ca.key -out ca.crt
+
+# 生成并签名服务端证书
+openssl genrsa -out server.key 2048
+openssl req -new \
+    -subj "/C=GB/L=China/O=server/CN=server.io" \
+    -key server.key -out server.csr
+openssl x509 -req -sha256 \
+    -CA ca.crt -CAkey ca.key -CAcreateserial -days 3650 \
+    -in server.csr \
+    -out server.crt \
+    -extfile <(printf "subjectAltName=DNS:server.io,DNS:localhost,IP:127.0.0.1\nextendedKeyUsage=serverAuth")
+
+# 生成并签名客户端证书
+openssl genrsa -out client.key 2048
+openssl req -new \
+    -subj "/C=GB/L=China/O=client/CN=client.io" \
+    -key client.key -out client.csr
+openssl x509 -req -sha256 \
+    -CA ca.crt -CAkey ca.key -CAcreateserial -days 3650 \
+    -in client.csr \
+    -out client.crt \
+    -extfile <(printf "extendedKeyUsage=clientAuth")
+```
+
+```go
+// server
+    lis, err := net.Listen("tcp", ":1234")
+    if err != nil {
+        log.Fatalf("failed to listen: %v", err)
+    }
+
+    certificate, err := tls.LoadX509KeyPair(
+        "../../cert/server.crt",
+        "../../cert/server.key")
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    certPool := x509.NewCertPool()
+    ca, err := os.ReadFile("../../cert/ca.crt")
+    if err != nil {
+        log.Fatal(err)
+    }
+    if ok := certPool.AppendCertsFromPEM(ca); !ok {
+        log.Fatal("failed to append certs")
+    }
+
+    creds := credentials.NewTLS(&tls.Config{
+        Certificates: []tls.Certificate{certificate},
+        ClientAuth:   tls.RequireAndVerifyClientCert, // NOTE: this is optional!
+        ClientCAs:    certPool,
+    })
+    s := grpc.NewServer(grpc.Creds(creds))
+
+// client
+    certificate, err := tls.LoadX509KeyPair(
+        "../../cert/client.crt",
+        "../../cert/client.key")
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    certPool := x509.NewCertPool()
+    ca, err := os.ReadFile("../../cert/ca.crt")
+    if err != nil {
+        log.Fatal(err)
+    }
+    if ok := certPool.AppendCertsFromPEM(ca); !ok {
+        log.Fatal("failed to append ca certs")
+    }
+
+    creds := credentials.NewTLS(&tls.Config{
+        Certificates: []tls.Certificate{certificate},
+        ServerName:   "server.io", // NOTE: this is required!
+        RootCAs:      certPool,
+    })
+    conn, err := grpc.NewClient("localhost:1234",
+        grpc.WithTransportCredentials(creds))
+    if err != nil {
+        log.Fatalf("did not connect: %v", err)
+    }
+    defer conn.Close()
+
+    client := pb.NewChatServiceClient(conn)
+```
+
 ## Todo List
 
 - [ ] 4. RPC和Protobuf
