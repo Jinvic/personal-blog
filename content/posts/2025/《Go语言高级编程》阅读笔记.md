@@ -1244,7 +1244,7 @@ func main() {
 func (client *Client) Call(serviceMethod string, args any, reply any) error
 ```
 
-### 4.1.2 更安全的 RPC 接口
+#### 4.1.2 更安全的 RPC 接口
 
 为了逻辑解耦和后续维护，我们往往需要定义一个规范来进行一定的抽象和封装。由于这个规范一定程度是服务端与客户端共用的，所以可以放到一个共享包中，结构如下：
 
@@ -1382,7 +1382,7 @@ func main() {
 }
 ```
 
-### 4.1.3 跨语言的 RPC
+#### 4.1.3 跨语言的 RPC
 
 标准库的 RPC 默认采用 Go 语言特有的 gob 编码，使得其他语言调用go实现的rpc并不方便。我们可以更换编码方式来实现跨语言兼容。如下是json编码示例：
 
@@ -1419,7 +1419,7 @@ func main() {
     client := rpc.NewClientWithCodec(jsonrpc.NewClientCodec(conn)) 
 ```
 
-### 4.1.4 Http 上的 RPC
+#### 4.1.4 Http 上的 RPC
 
 虽然jsonrpc已经提供了跨语言兼容性，tcp+jsonrpc可用。但http相比tcp有着标准化的传输协议、更好的工具链支持和json支持等，实际应用中常用http+jsonrpc进行跨语言通信。
 
@@ -1909,6 +1909,12 @@ func (s *server) Chat(stream pb.ChatService_ChatServer) error {
     for {
         req, err := stream.Recv()
         if err != nil {
+            if err == io.EOF {
+                // 客户端正常关闭发送流（如调用了 CloseSend）
+                // 服务端应正常结束，不报错
+                return nil
+            }
+            // 其他错误（如网络中断、解码失败等）
             return err
         }
         content := req.Msg.Content
@@ -1975,7 +1981,20 @@ func main() {
     for {
         resp, err := stream.Recv()
         if err != nil {
-            break // 流结束或出错
+            if err == io.EOF {
+                // 正常结束：服务端主动关闭流（比如聊天结束）
+                fmt.Println("Stream closed by server (normal EOF)")
+                break
+            }
+
+            // 检查是否是 gRPC 状态错误
+            if st, ok := status.FromError(err); ok {
+                fmt.Printf("gRPC error: code=%s, message=%s\n", st.Code(), st.Message())
+            } else {
+                // 其他错误（如网络问题）
+                fmt.Printf("Non-gRPC error: %v\n", err)
+            }
+            break // 无论哪种错误，流都无法继续
         }
         fmt.Printf("Received: %s\n", resp.Msg.Content)
     }
@@ -2017,7 +2036,9 @@ go run ./cmd/client
 
 #### 4.5.1 证书认证
 
-介绍适合传入证书实现TLS加密。
+介绍如何传入证书实现传输层TLS加密。
+
+在传统Web/HTTP服务中，传输层安全（TLS）通常由反向代理或负载均衡器处理，解码后以HTTP明文转发给后端应用。应用代码只需处理 HTTP 请求，无需内置 TLS。而gRPC是端到端的，中间没有反向代理等架构，所以需要开发者显式处理。
 
 首先是使用`openssl`生成证书。需要注意的是，Go 1.15+默认不再信任仅使用 **Common Name (CN)** 字段的证书，而要求使用 **Subject Alternative Name (SAN)** 扩展字段来指定主机名。所以书上的命令生成的证书是不可用的。
 
@@ -2156,6 +2177,211 @@ openssl x509 -req -sha256 \
 
     client := pb.NewChatServiceClient(conn)
 ```
+
+#### 4.5.2 Token 认证
+
+上一节是连接的安全加密通信，这一节就是常规的用户鉴权。实现`PerRPCCredentials`接口，相关元数据会被添加到grpc的metadata中，底层为HTTP/2 headers。
+
+```go
+type PerRPCCredentials interface {
+    GetRequestMetadata(ctx context.Context, uri ...string) (
+        map[string]string, error,
+    )
+    RequireTransportSecurity() bool
+}
+```
+
+如上，`GetRequestMetadata()`方法返回用于鉴权的元数据（用户名密码，签名token等），`RequireTransportSecurity()`标识这个方法是否要求传输层安全，即我们上一节实现的TLS。既然上一节已经实现，这里我就设置为true，测试练习时可以设为false。最后在客户端将实现了接口的变量作为参数传入。在服务端提取元数据进行校验。
+
+```go
+type apiTokenCredential struct {
+    Token string
+}
+
+func (c *apiTokenCredential) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
+    return map[string]string{
+        "authorization": "Bearer " + c.Token,
+    }, nil
+}
+
+func (c *apiTokenCredential) RequireTransportSecurity() bool {
+    return true
+}
+
+// client
+token := generateToken() // todo: 生成jwt token
+perRPCCreds := &apiTokenCredential{Token: token}
+
+conn, err := grpc.NewClient("localhost:1234",
+    grpc.WithTransportCredentials(creds),
+    grpc.WithPerRPCCredentials(perRPCCreds), // 👈 添加这一行
+)
+
+// server
+func (p *grpcServer) SomeMethod(
+    ctx context.Context, in *HelloRequest,
+) (*HelloReply, error) {
+    if err := CheckAuth(ctx); err != nil {
+        return nil, err
+    }
+
+    return &HelloReply{Message: "Hello" + in.Name}, nil
+}
+
+func CheckAuth(ctx context.Context) error {
+    md, ok := metadata.FromIncomingContext(ctx)
+    if !ok {
+        return status.Error(codes.Unauthenticated, "missing credentials")
+    }
+
+    authHeaders := md["authorization"]
+    if len(authHeaders) == 0 {
+        return status.Errorf(codes.Unauthenticated, "missing authorization header")
+    }
+
+    if !validateToken(authHeaders[0]) { // todo: 验证jwt token
+        return status.Errorf(codes.Unauthenticated, "invalid token")
+    }
+
+    return nil
+}
+```
+
+#### 4.5.3 截取器
+
+```go
+type UnaryServerInterceptor func(
+    ctx context.Context,
+    req interface{},
+    info *UnaryServerInfo,
+    handler UnaryHandler,
+) (resp interface{}, err error)
+
+type StreamServerInterceptor func(
+    srv interface{},
+    ss ServerStream,
+    info *StreamServerInfo,
+    handler StreamHandler,
+) error
+
+grpc.NewServer(
+    grpc.UnaryInterceptor(authUnary),
+    grpc.StreamInterceptor(authStream),
+)
+```
+
+如上是**一元拦截器**和**流式拦截器**的定义，可以看到一元多出了req和resp而流式没有。这意味着在一元拦截器中我们可以直接操作 req/resp，而流式拦截器必须包装后重新实现接口：
+
+```go
+type wrappedStream struct {
+    grpc.ServerStream
+    // 可添加字段，如 logger, quota 等
+}
+
+func (w *wrappedStream) RecvMsg(m interface{}) error {
+    fmt.Println("About to receive a message")
+    return w.ServerStream.RecvMsg(m)
+}
+
+func (w *wrappedStream) SendMsg(m interface{}) error {
+    fmt.Println("About to send a message")
+    return w.ServerStream.SendMsg(m)
+}
+
+// 在拦截器中使用
+func loggingStreamInterceptor(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+    wrapped := &wrappedStream{ServerStream: ss}
+    return handler(srv, wrapped)
+}
+```
+
+注册拦截器示例如下：
+
+```go
+grpc.NewServer(
+    grpc.UnaryInterceptor(unaryInterceptor),
+    grpc.StreamInterceptor(streamInterceptor),
+)
+```
+
+需要注意的是，原生grpc只支持注册Unary和Stream拦截器各一个，所以如果有多个功能需要组合成一个拦截器。此外，拦截器是全局生效的，将处理服务注册的所有方法。如果需要对不同方法启用不同中间件，可以考虑通过`info.FullMethod`的方法名进行匹配：
+
+```go
+func CombinedUnaryInterceptor(
+    authMethods map[string]bool,
+    logMethods map[string]bool,
+) grpc.UnaryServerInterceptor {
+    return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+        method := info.FullMethod // e.g., "/chat.ChatService/Chat"
+
+        // 1. 鉴权中间件（仅对特定方法）
+        if authMethods[method] {
+            if !validateTokenFromContext(ctx) {
+                return nil, status.Error(codes.Unauthenticated, "auth required")
+            }
+        }
+
+        // 2. 日志中间件（仅对特定方法）
+        if logMethods[method] {
+            log.Printf("➡️  Calling %s", method)
+            defer log.Printf("⬅️  Finished %s", method)
+        }
+
+        // 3. 其他中间件（限流、metrics 等）...
+
+        return handler(ctx, req)
+    }
+}
+```
+
+在工程实践中，要实现类似http中间件那样灵活的配置，可以引入`grpc-ecosystem/go-grpc-middleware`这个第三方包。
+
+#### 4.5.4 和 Web 服务共存
+
+```go
+import (
+    "net/http"
+    "google.golang.org/grpc"
+    "golang.org/x/net/http2"
+    "golang.org/x/net/http2/h2c"
+)
+
+// 1. 创建 gRPC 服务器
+grpcServer := grpc.NewServer()
+pb.RegisterMyServiceServer(grpcServer, &myService{})
+
+// 2. 创建 HTTP 路由
+httpMux := http.NewServeMux()
+httpMux.HandleFunc("/health", healthHandler)
+
+// 3. 创建一个“混合” handler
+grpcHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+    // 如果是 gRPC 请求（Content-Type 包含 "application/grpc"）
+    if r.ProtoMajor == 2 && strings.Contains(r.Header.Get("Content-Type"), "application/grpc") {
+        grpcServer.ServeHTTP(w, r) // 交给 gRPC 处理
+        return
+    }
+    // 否则交给 HTTP 路由
+    httpMux.ServeHTTP(w, r)
+})
+
+// 4. 启动支持 h2c 的 HTTP 服务器
+server := &http.Server{
+    Addr:    ":8080",
+    Handler: h2c.NewHandler(grpcHandler, &http2.Server{}), // HTTP/2（明文）
+}
+server.ListenAndServe()
+
+// 或者启动支持 TLS 的 HTTPS 服务器
+server := &http.Server{
+    Addr:    ":8080",
+    Handler: grpcHandler
+}
+server.ListenAndServeTLS("server.crt", "server.key")
+```
+
+- 浏览器访问 example.com/health → HTTP/1.1 or HTTP/2 → 走 HTTP handler
+- gRPC 客户端连接 example.com:8080 with TLS → HTTP/2 + application/grpc → 走 gRPC
 
 ## Todo List
 
