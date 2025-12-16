@@ -30,7 +30,7 @@ jobs:
       run: hugo --minify # 使用--minify选项来压缩HTML、JS和CSS
 
     - name: Deploy to Server
-      uses: SamKirkland/FTP-Deploy-Action@v4.3.5 # 部署到服务器
+      uses: SamKirkland/FTP-Deploy-Action@v4.3.6 # 部署到服务器
       with:
         server: ${{ secrets.FTP_SERVER }}
         username: ${{ secrets.FTP_USER }}
