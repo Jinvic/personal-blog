@@ -29,12 +29,19 @@ jobs:
     - name: Build the site
       run: hugo --minify # 使用--minify选项来压缩HTML、JS和CSS
 
-    - name: Deploy to Server
-      uses: SamKirkland/FTP-Deploy-Action@v4.3.6 # 部署到服务器
+    # 部署到服务器
+    - name: Deploy to server
+      uses: easingthemes/ssh-deploy@v5.1.0
       with:
-        server: ${{ secrets.FTP_SERVER }}
-        username: ${{ secrets.FTP_USER }}
-        password: ${{ secrets.FTP_PASS }}
-        local-dir: ${{ github.workspace }}/public/
-        server-dir: ./
-        # dangerous-clean-slate: true
+        SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        ARGS: "-rlgoDzvc --delete"
+        SOURCE: ./public/
+        REMOTE_HOST: ${{ secrets.REMOTE_HOST }}
+        REMOTE_USER: ${{ secrets.REMOTE_USER }}
+        TARGET: ${{ secrets.REMOTE_TARGET }}
+        SCRIPT_BEFORE: |
+          echo "🔧 开始部署..."
+          echo "时间: $(date)"
+        SCRIPT_AFTER: |
+          echo "✅ 部署完成"
+          echo "时间: $(date)"
