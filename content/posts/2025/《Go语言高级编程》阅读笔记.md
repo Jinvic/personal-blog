@@ -2383,6 +2383,93 @@ server.ListenAndServeTLS("server.crt", "server.key")
 - 浏览器访问 example.com/health → HTTP/1.1 or HTTP/2 → 走 HTTP handler
 - gRPC 客户端连接 example.com:8080 with TLS → HTTP/2 + application/grpc → 走 gRPC
 
+### 4.6 gRPC 和 Protobuf 扩展
+
+这一节很多内容都过时了，了解大致框架就行。具体使用的时候还是建议查找最近的技术栈和相关文档。
+
+#### 4.6.1 验证器
+
+**默认值**：
+
+第二版的 Protobuf 有个默认值特性，可以为字符串或数值类型的成员定义默认值：
+
+```protobuf
+syntax = "proto2";
+
+package main;
+
+message Message {
+    optional string name = 1 [default = "gopher"];
+    optional int32 age = 2 [default = 10];
+}
+```
+
+内置的默认值语法其实是通过 Protobuf 的扩展选项特性实现。在第三版的 Protobuf 中不再支持默认值特性，但是我们可以通过扩展选项自己模拟默认值特性。
+
+```protobuf
+syntax = "proto3";
+
+package main;
+
+import "google/protobuf/descriptor.proto";
+
+extend google.protobuf.FieldOptions {
+    string default_string = 50000;
+    int32 default_int = 50001;
+}
+
+message Message {
+    string name = 1 [(default_string) = "gopher"];
+    int32 age = 2[(default_int) = 10];
+}
+```
+
+成员后面的方括号内部的就是扩展语法。运行时将通过类似反射的技术解析出扩展选项，再从中解析出定义的默认值。
+
+**验证器**：
+
+书上这里介绍的是一个第三方库，内容也有些过时。建议使用[buf](https://github.com/bufbuild/buf)这个cli工具的的验证库[protovalidate](https://github.com/bufbuild/protovalidate)。有空再详细了解一下。
+
+至于这些插件的具体实现原理，可以回去看[4.2.2 定制代码生成插件](#422-定制代码生成插件)和[4.2.3 自动生成完整的 RPC 代码](#423-自动生成完整的-rpc-代码)的内容。
+
+#### 4.6.2 REST 接口
+
+`grpc-gateway`这个项目实现了将 gRPC 服务转为 REST 服务。
+
+![grpc-gateway](/post-images/《Go语言高级编程》阅读笔记/architecture_introduction_diagram.svg)
+
+```protobuf
+syntax = "proto3";
+
+package main;
+
+import "google/api/annotations.proto";
+
+message StringMessage {
+  string value = 1;
+}
+
+service RestService {
+    rpc Get(StringMessage) returns (StringMessage) {
+        option (google.api.http) = {
+            get: "/get/{value}"
+        };
+    }
+    rpc Post(StringMessage) returns (StringMessage) {
+        option (google.api.http) = {
+            post: "/post"
+            body: "*"
+        };
+    }
+}
+```
+
+[kratos](https://go-kratos.dev/zh-cn/)框架就用的这套模式。
+
+#### 4.6.3 Nginx
+
+Nginx 的 gRPC 扩展，没有展开讲解。
+
 ## Todo List
 
 - [ ] 4. RPC和Protobuf
