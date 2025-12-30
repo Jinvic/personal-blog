@@ -2482,6 +2482,143 @@ Nginx 的 gRPC 扩展，没有展开讲解。
 
 个人总结，正如这节所说，rpc资料相对较少，本书的内容也有很多过时的地方，建议多阅读官方文档，本书的相关内容只作为一个引子就行。rpc的门槛还是比较高的，我通读本章也只是建立了一个大致框架，后续进一步精进应该还得去啃文档。
 
+## 5. Go和Web
+
+### 5.1 Web 开发简介
+
+简单介绍go的Web框架，大致分为Router 框架和MVC 类框架两类。前者相对轻量，专注于HTTP请求的路由分发。后者提供完整的应用程序架构，可能内置RM、模板引擎、配置管理等。go并没有像java的Spring那样大一统的框架，生态百花齐放。个人体感比较流行的就是轻量级路由框架 + 独立组件 + 自由的项目项目架构。我最常用的gin+gorm技术栈就是这样。
+
+### 5.2 router 请求路由
+
+开头介绍了 RESTful 的API设计风格。除了 GET 和 POST 还会用到其他 PUT，PATCH，DELETE等语义。此外，RESTful 风格的 API 重度依赖请求路径。会将很多参数放在请求 URI 中。这而路径参数使用标准库的`mux`并不好处理。
+
+这一章主要介绍`httprouter`这个框架，`Gin`框架就是httprouter的变种。关于这个框架的具体用法不用详细了解，毕竟平时基本都是用Gin，贪多嚼不烂。主要是通过介绍这个框架来了解路由这个概念，压缩字典树原理等。
+
+### 5.3 中间件
+
+中间件这个概念看上去很高大上，实际上就是把业务无关的逻辑抽离出来单独封装而已。和我们把`c=a+b`变成`func plus(a,b int) int {return a+b}`差不多。
+
+#### 5.3.1 代码泥潭
+
+让我们举一个最简单的例子，统计一个请求的耗时。如果不用中间件，代码可能是这样的：
+
+```go
+func helloHandler(wr http.ResponseWriter, r *http.Request) {
+    // 通用逻辑
+    timeStart := time.Now()
+
+    // 业务逻辑
+    wr.Write([]byte("hello"))
+    
+    // 通用逻辑
+    timeElapsed := time.Since(timeStart)
+    logger.Println(timeElapsed)
+}
+```
+
+#### 5.3.2 使用中间件剥离非业务逻辑
+
+将其抽离封装起来，就成了一个基础的中间件：
+
+```go
+// 业务逻辑
+func hello(wr http.ResponseWriter, r *http.Request) {
+    wr.Write([]byte("hello"))
+}
+
+// 通用逻辑
+func timeMiddleware(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(wr http.ResponseWriter, r *http.Request) {
+        timeStart := time.Now()
+
+        // next handler
+        next.ServeHTTP(wr, r)
+
+        timeElapsed := time.Since(timeStart)
+        logger.Println(timeElapsed)
+    })
+}
+
+func main() {
+    http.Handle("/", timeMiddleware(http.HandlerFunc(hello)))
+    err := http.ListenAndServe(":8080", nil)
+    ...
+}
+```
+
+可以看到，如上中间件接受了一个`http.Handler`类型的参数，返回的`http.HandlerFunc`类型作为`http.Handler`。让我们梳理一下 http 库的 Handler，HandlerFunc 和 ServeHTTP 的关系：
+
+```go
+type Handler interface {
+    ServeHTTP(ResponseWriter, *Request)
+}
+
+type HandlerFunc func(ResponseWriter, *Request)
+
+func (f HandlerFunc) ServeHTTP(w ResponseWriter, r *Request) {
+    f(w, r)
+}
+```
+
+可以看到，`Handler`是一个需要实现`ServeHTTP`方法的接口。而`HandlerFunc`则是一个实现了`ServeHTTP`方法，即满足`Handler`接口的类型。这个类型是一个函数签名的别名。其实现的`ServeHTTP`方法即是在内部再次调用这个函数。
+
+换言之，只要我们定义的handler函数签名是`func(ResponseWriter,*Request)`，它可以被转换成`http.HandlerFunc`类型，实现`http.Handler`接口。
+
+#### 5.3.3 更优雅的中间件写法
+
+我们目前的中间件写法是这样的：
+
+```go
+http.Handle("/", timeMiddleware(http.HandlerFunc(hello)))
+```
+
+很显然，在外面套一层函数的方式比较丑陋，在中间件较多时也不好管理。这里提供了一种相对优雅的写法实现。Gin也是类似的逻辑：
+
+```go
+r = NewRouter()
+r.Use(logger)
+r.Use(timeout)
+r.Use(ratelimit)
+r.Add("/", helloHandler)
+```
+
+```go
+type middleware func(http.Handler) http.Handler
+
+type Router struct {
+    middlewareChain [] middleware
+    mux map[string] http.Handler
+}
+
+func NewRouter() *Router {
+    return &Router{
+        mux: make(map[string]http.Handler),
+    }
+}
+
+func (r *Router) Use(m middleware) {
+    r.middlewareChain = append(r.middlewareChain, m)
+}
+
+func (r *Router) Add(route string, h http.Handler) {
+    var mergedHandler = h
+
+    for i := len(r.middlewareChain) - 1; i >= 0; i-- {
+        mergedHandler = r.middlewareChain[i](mergedHandler)
+    }
+
+    r.mux[route] = mergedHandler
+}
+```
+
+从上节我们可以发现，中间件的逻辑是层层嵌套的。而这个实现相当于自动化中间件的调用链，我们只需要按顺序将中间件入栈就行。
+
+#### 5.3.4 哪些事情适合在中间件中做
+
+可以看看Gin的中间件仓库：[gin-gonic/contrib](https://github.com/gin-gonic/contrib)。
+
+#### 5.4 validator 请求校验
+
 ## Todo List
 
 - [x] 4. RPC和Protobuf
