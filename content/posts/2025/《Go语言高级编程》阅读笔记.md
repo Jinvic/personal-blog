@@ -2617,7 +2617,126 @@ func (r *Router) Add(route string, h http.Handler) {
 
 可以看看Gin的中间件仓库：[gin-gonic/contrib](https://github.com/gin-gonic/contrib)。
 
-#### 5.4 validator 请求校验
+### 5.4 validator 请求校验
+
+#### 5.4.1 重构请求校验函数
+
+介绍一种将优化层层嵌套校验逻辑的方法：[Guard Clauses](https://refactoring.com/catalog/replaceNestedConditionalWithGuardClauses.html)。这个还是比较基础的。
+
+```go
+type RegisterReq struct {
+    Username       string   `json:"username"`
+    PasswordNew    string   `json:"password_new"`
+    PasswordRepeat string   `json:"password_repeat"`
+    Email          string   `json:"email"`
+}
+
+// 优化前
+func register(req RegisterReq) error{
+    if len(req.Username) > 0 {
+        if len(req.PasswordNew) > 0 && len(req.PasswordRepeat) > 0 {
+            if req.PasswordNew == req.PasswordRepeat {
+                if emailFormatValid(req.Email) {
+                    createUser()
+                    return nil
+                } else {
+                    return errors.New("invalid email")
+                }
+            } else {
+                return errors.New("password and reinput must be the same")
+            }
+        } else {
+            return errors.New("password and password reinput must be longer than 0")
+        }
+    } else {
+        return errors.New("length of username cannot be 0")
+    }
+}
+
+// 优化后
+func optimizedRegister(req RegisterReq) error{
+    if len(req.Username) == 0 {
+        return errors.New("length of username cannot be 0")
+    }
+
+    if len(req.PasswordNew) == 0 || len(req.PasswordRepeat) == 0 {
+        return errors.New("password and password reinput must be longer than 0")
+    }
+
+    if req.PasswordNew != req.PasswordRepeat {
+        return errors.New("password and reinput must be the same")
+    }
+
+    if emailFormatValid(req.Email) {
+        return errors.New("invalid email")
+    }
+
+    createUser()
+    return nil
+}
+```
+
+#### 5.4.2 用 validator 解放体力劳动
+
+介绍一个validator库：[go-playground/validator](https://github.com/go-playground/validator)，这也是Gin框架默认使用的验证器。具体用法就不展开了，有需要可以看看文档。
+
+#### 原理
+
+使用Go的反射去遍历字段和结构体的类型和值等进行校验。由于反射性能不佳，这里也给了另一种思路：使用 Go 内置的 Parser 对源代码进行扫描，然后根据结构体的定义生成校验代码。不过这里没有详细展开。对大部分人来说，会用这个包进行校验就行。
+
+### 5.5 Database 和数据库打交道
+
+#### 5.5.1 从 database/sql 讲起
+
+介绍官方库`database/sql`的相关内容。这个包只提供了一套操作数据库的接口和规范，没有提供具体某种数据库实现的协议支持。需要自行引入驱动：
+
+```go
+import "database/sql"
+import _ "github.com/go-sql-driver/mysql"
+
+db, err := sql.Open("mysql", "user:password@/dbname")
+
+```
+
+其中，`import _`这一步会调用对应包的init函数，将`mysql`这个名字的driver注册到sql包的全局map中。
+
+```go
+func init() {
+    sql.Register("mysql", &MySQLDriver{})
+}
+```
+
+sql包在`database/sql/driver/driver.go`的定义都是接口，实际调用的是注册的具体driver的方法。
+
+```go
+type Driver interface {
+    Open(name string) (Conn, error)
+}
+
+type Conn interface {
+    Prepare(query string) (Stmt, error)
+    Close() error
+    Begin() (Tx, error)
+}
+```
+
+database/sql 库的具体用法，感兴趣可以参考[Go database/sql tutorial](http://go-database-sql.org/)。我们平时与数据库进行交互时，常用的是SQL Builder 和 ORM，而不是每次都手写raw sql。
+
+#### 5.5.2 提高生产效率的 ORM 和 SQL Builder
+
+> 对象关系映射（英语：Object Relational Mapping，简称 ORM，或 O/RM，或 O/R mapping），是一种程序设计技术，用于实现面向对象编程语言里不同类型系统的数据之间的转换。 从效果上说，它其实是创建了一个可在编程语言里使用的 “虚拟对象数据库”。
+
+简单来说，ORM就是从操作数据库变成操作对象，一定程度上屏蔽sql的底层细节，和汇编语言到高级语言的变化差不多。这种抽象降低了开发复杂度和心智负担，但这种抽象也让我们失去了精细化操作的可能。所以有的时候我们即使用的orm也是需要写些raw sql的。
+
+而SQL Builder的抽象程度没那么高，也更接近原始的sql语句。正如其名，sql builder只是提供了一种方便构建sql语句的方式而已。但这种做法开发效率较低，需要手动编写SQL逻辑。而且不同数据库的sql语句不太一样，可能需要对不同数据库定向修改。
+
+ORM 和 SQL Builder两者并不冲突，可以组合使用。介绍了一下两者，没有贴实际代码。这一块感觉还是得自己上手写写才好理解。
+
+#### 5.5.3 脆弱的数据库
+
+介绍Builder 和 ORM 过于灵活，执行的sql可能有风险。需要将sql语句提供给专职的DBA进行评审。不过我工作中基本没接触过这一块。都是些简单的CRUD用不上DBA。
+
+### 5.6 Ratelimit 服务流量限制
 
 ## Todo List
 
