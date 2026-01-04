@@ -2738,6 +2738,96 @@ ORM 和 SQL Builder两者并不冲突，可以组合使用。介绍了一下两�
 
 ### 5.6 Ratelimit 服务流量限制
 
+#### 5.6.1 常见的流量限制手段
+
+介绍**漏桶**和**令牌桶**两种流量限制手段。
+
+漏桶原理：
+
+- **桶结构**：桶有一个固定容量。水（请求/数据包）流入桶中。
+- **进水**：当请求到达时，如果桶未满，则放入桶中；如果桶已满，则**丢弃或排队等待**（取决于实现）。
+- **出水**：桶底有一个孔，以**恒定速率**向外漏水（处理请求）。
+
+令牌桶原理：
+
+- **令牌生成**：系统以**恒定速率**（如每秒10个）向桶中添加令牌。
+- **桶容量**：桶有**最大容量**（如100个令牌），多余的令牌会被丢弃。
+- **请求处理**：当请求到达时，从桶中取出一个令牌：
+  - 如果桶中有令牌 → 请求立即通过，令牌数减1。
+  - 如果桶中无令牌 → 请求被**拒绝或排队**。
+
+如果需要**绝对平滑**的输出速率，则应选择漏桶。不过业务中更常见的场景是需要限制**平均请求速率**，但允许合理的**短期突发**，这时就应该使用令牌桶。
+
+这里介绍的`github.com/juju/ratelimit`库已经不再活跃。建议使用官方库`golang.org/x/time/rate`，这是一个令牌桶实现。至于漏桶实现，则可以使用`go.uber.org/ratelimit`。
+
+#### 5.6.2 原理
+
+介绍令牌桶的实现原理，最简单的方法就是使用一个带缓冲区的channel，定时添加token。
+
+```go
+package main
+
+import (
+    "fmt"
+    "time"
+)
+
+func main() {
+    var fillInterval = time.Millisecond * 10
+    var capacity = 100
+    var tokenBucket = make(chan struct{}, capacity)
+
+    fillToken := func() {
+        ticker := time.NewTicker(fillInterval)
+        for {
+            select {
+            case <-ticker.C:
+                select {
+                case tokenBucket <- struct{}{}:
+                default:
+                }
+                fmt.Println("current token cnt:", len(tokenBucket), time.Now())
+            }
+        }
+    }
+
+    go fillToken()
+    time.Sleep(time.Hour)
+}
+
+func TakeAvailable(block bool) bool{
+    var takenResult bool
+    if block {
+        select {
+        case <-tokenBucket:
+            takenResult = true
+        }
+    } else {
+        select {
+        case <-tokenBucket:
+            takenResult = true
+        default:
+            takenResult = false
+        }
+    }
+
+    return takenResult
+}
+```
+
+另一种更简单的实现是记录上次放令牌的时间t1和令牌数k1。设放令牌的时间间隔为T，每次向令牌桶中放x个令牌，令牌桶容量为cap。当用户在t2取令牌时，我们就可以直接计算出当前的令牌数：
+
+```text
+cur = k1 + ((t2 - t1)/T) * x
+cur = cur > cap ? cap : cur
+```
+
+在得到正确的令牌数之后，再进行实际的 Take 操作就好，这个 Take 操作只需要对令牌数进行简单的减法即可，记得加锁以保证并发安全。`github.com/juju/ratelimit` 这个库就是这样做的。
+
+#### 5.6.3 服务瓶颈和 QoS
+
+介绍QoS（Quality of Service）这个概念，包含延迟、抖动、带宽、丢包率等一系列指标。
+
 ## Todo List
 
 - [x] 4. RPC和Protobuf
