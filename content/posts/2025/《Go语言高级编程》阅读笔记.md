@@ -3152,8 +3152,153 @@ func ProcessOrder(orderType string, orderData interface{}) error {
 }
 ```
 
+### 5.9 灰度发布和 A/B test
+
+介绍灰度发布和A/B test。前者主要是新功能上线时逐步扩大范围，确保发现问题能快速回退，避免影响全部用户，保证服务的稳定性。后者主要比较同一功能在两个不同版本下的表现，用于判断那个版本更好，属于实验和调研性质。A/B test也可以通过灰度发布的形式进行。
+
+#### 5.9.1 通过分批次部署实现灰度发布
+
+介绍一种1-2-4-8 的等比数列分组方式，确保初期上线时影响范围最小，同时也不会需要部署太多次。
+
+#### 5.9.2 通过业务规则进行灰度发布
+
+常见的灰度发布可选规则有：
+
+1. 按城市发布
+2. 按概率发布
+3. 按百分比发布
+4. 按白名单发布
+5. 按业务线发布
+6. 按 UA 发布 (APP、Web、PC)
+7. 按分发渠道发布
+
+此外，有时我们也需要确保用户一致性，保证同一个用户的返回结果多次调用是一致的。
+
+> 举个具体的例子，网站的注册环节，可能有两套 API，按照用户 ID 进行灰度，分别是不同的存取逻辑。如果存储时使用了 V1 版本的 API 而获取时使用 V2 版本的 API，那么就可能出现用户注册成功后反而返回注册失败消息的诡异问题。
+
+#### 5.9.3 如何实现一套灰度发布系统
+
+一套灰度发布系统的工程实践示例：
+
+```yaml
+# gray_config.yaml
+features:
+  new_checkout:
+    enabled: true
+    description: "新结算流程"
+    rules:
+      - type: "percentage"
+        value: 10  # 10%用户
+      - type: "city"
+        value: ["北京", "上海", "深圳"]
+      - type: "whitelist"
+        value: ["employee@company.com", "tester@test.com"]
+  
+  smart_recommendation:
+    enabled: true
+    description: "智能推荐算法"
+    rules:
+      - type: "percentage" 
+        value: 30
+      - type: "ua"
+        value: ["iOS", "Android"]  # 只对移动端开放
+```
+
+```go
+type FeatureConfig struct {
+    Name        string         `yaml:"name"`
+    Enabled     bool           `yaml:"enabled"`
+    Description string         `yaml:"description"`
+    Rules       []RuleConfig   `yaml:"rules"`
+}
+
+type RuleConfig struct {
+    Type  string      `yaml:"type"`
+    Value interface{} `yaml:"value"`
+}
+
+type GraySystem struct {
+    features map[string]*FeatureConfig
+    mu       sync.RWMutex
+}
+
+func (g *GraySystem) IsFeatureEnabled(user User, featureName string) bool {
+    g.mu.RLock()
+    config, exists := g.features[featureName]
+    g.mu.RUnlock()
+    
+    if !exists || !config.Enabled {
+        return false
+    }
+    
+    // 应用所有规则（默认AND逻辑）
+    for _, rule := range config.Rules {
+        if !g.evaluateRule(user, rule) {
+            return false
+        }
+    }
+    
+    return true
+}
+
+func (g *GraySystem) evaluateRule(user User, rule RuleConfig) bool {
+    switch rule.Type {
+    case "percentage":
+        // 百分比规则，保证用户一致性
+        threshold := rule.Value.(int)
+        hash := g.getUserHash(user, rule.Type)
+        return int(hash%100) < threshold
+        
+    case "city":
+        cities := rule.Value.([]string)
+        for _, city := range cities {
+            if user.City == city {
+                return true
+            }
+        }
+        return false
+        
+    case "whitelist":
+        emails := rule.Value.([]string)
+        for _, email := range emails {
+            if user.Email == email {
+                return true
+            }
+        }
+        return false
+        
+    case "ua":
+        uas := rule.Value.([]string)
+        for _, ua := range uas {
+            if strings.Contains(user.UserAgent, ua) {
+                return true
+            }
+        }
+        return false
+        
+    default:
+        return false
+    }
+}
+
+// 确保同一用户对同一规则得到相同结果
+func (g *GraySystem) getUserHash(user User, ruleType string) uint32 {
+    // 组合用户ID和规则类型
+    input := fmt.Sprintf("%s-%s-%s", user.ID, user.Phone, ruleType)
+    return crc32.ChecksumIEEE([]byte(input))
+}
+```
+
+此外还提到了哈希算法的选择和分布度验证。这部分有需要可以看看，但我做的小业务用不上这么复杂。
+
+#### 5.10 补充说明
+
+个人总结。这一章介绍web相关，但并不是手把手教你做一个web项目，而是介绍各种进阶知识。没有这部分内容也可以做一个web应用，但学会学懂了这部分内容才能做出一个高性能高可用，设计规范，符合工程实践的web项目。
+
+不过我个人做的都是些小业务，没有那么大的数据量和并发量。所以不少东西只能看看不咋用的上。哪怕用不上，了解一下也是好的。以后有需要就能想起来去用了。正如我常说的，**连自己不知道什么都不知道才是最大的无知**。
+
 ## Todo List
 
 - [x] 4. RPC和Protobuf
-- [ ] 5. Go和Web
+- [x] 5. Go和Web
 - [ ] 6. 分布式系统
