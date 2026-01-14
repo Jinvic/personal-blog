@@ -3297,6 +3297,99 @@ func (g *GraySystem) getUserHash(user User, ruleType string) uint32 {
 
 不过我个人做的都是些小业务，没有那么大的数据量和并发量。所以不少东西只能看看不咋用的上。哪怕用不上，了解一下也是好的。以后有需要就能想起来去用了。正如我常说的，**连自己不知道什么都不知道才是最大的无知**。
 
+## 6. 分布式系统
+
+### 6.1 分布式 id 生成器
+
+介绍`snowflake`和`sonyflake`等分布式id生成器。原理都差不多，将64位的比特位去掉符号位，剩下部分分为三份分别代表时间，机器和自增id。
+
+### 6.2 分布式锁
+
+从单机到分布式，从简单到复杂介绍分布式锁的实现方案。
+
+1. **标准互斥锁（sync.Mutex）**：
+
+   - 阻塞式，获取不到锁的goroutine会等待
+   - 适合大多数单机并发场景
+
+   ```go
+   var l sync.Mutex
+   l.Lock()
+   counter++  // 临界区
+   l.Unlock()
+   // 稳定输出：1000
+   ```
+
+2. **TryLock**（尝试加锁）
+
+   - TryLock最主要的作用就是获取锁失败时会立即放弃，**不会阻塞**。
+   - 单机场景下不推荐使用，可能引起**活锁**（多个goroutine不断尝试TryLock失败，浪费CPU）
+
+   ```go
+   // 使用channel模拟TryLock
+   type Lock struct {
+       c chan struct{}
+   }
+   func (l Lock) Lock() bool {
+       select {
+       case <-l.c: return true  // 获取成功
+       default: return false     // 获取失败
+       }
+   }
+
+   func (l Lock) UnLock() bool {
+       l.c <- struct{}{}
+   }
+   ```
+
+3. 基于 **Redis** 的 setnx
+
+    如果要在分布式场景下实现trylock的非阻塞锁逻辑，可以使用redis的`setnx`命令。
+
+    ```go
+    // Redis SETNX命令：key不存在时设置成功
+    resp := client.SetNX("lock_key", 1, time.Second*5)
+    if lockSuccess, _ := resp.Result(); lockSuccess {
+        // 获取锁成功
+
+        // 释放锁
+        delResp := client.Del(lockKey)
+        unlockSuccess, err := delResp.Result()
+        if err == nil && unlockSuccess > 0 {
+            println("unlock success!")
+        } else {
+            println("unlock failed", err)
+        }
+    }
+    ```
+
+4. 基于 **ZooKeeper**
+
+    而分布式场景下的阻塞锁，则可以使用`ZooKeeper`，用法类似单机的`sync.Mutex`，比较适合持有时间长的**粗粒度**锁。
+
+    ```go
+    conn, _, err := zk.Connect([]string{"127.0.0.1"}, time.Second)
+    l := zk.NewLock(conn, "/lock", zk.WorldACL(zk.PermAll))
+    err := l.Lock()  // 阻塞直到获取锁
+
+    // do some thing
+
+    l.Unlock()
+    ```
+
+5. 基于 **etcd**
+
+    `etcd`用法和`ZooKeeper`差不多，底层原理有区别，不过在此不展开讨论。相比之下，etcd更新更现代，社区活跃度更高，使用也更方便快捷。除非项目原有技术栈和ZooKeeper深度耦合，否则更推荐学习使用etcd。
+
+    ```go
+        m, _ := etcdsync.New("/lock", 10, []string{"http://127.0.0.1:2379"})
+        err := m.Lock()  // 阻塞直到获取锁
+
+        // do some thing
+
+        m.Unlock()
+    ```
+
 ## Todo List
 
 - [x] 4. RPC和Protobuf
