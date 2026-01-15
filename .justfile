@@ -1,6 +1,6 @@
 set shell := ["powershell.exe", "-c"]
 
-year:="2025"
+year:="2026"
 
 build:
     hugo
