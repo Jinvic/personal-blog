@@ -1,0 +1,52 @@
+# Hugo站点根目录下的配置文件
+# 定义需要同步到MkDocs站点的读书笔记
+
+version: 1.0
+last_updated: 2026-01-19
+
+notes:
+  # # 示例配置1：完整配置（推荐）
+  # - source: "content/posts/2025/《Go语言高级编程》阅读笔记.md"
+  #   # 在MkDocs中的目标目录名（可选，默认为文件名）
+  #   target_dir: "go-advanced-programming"
+  #   # 关联的图片目录（相对Hugo根目录）
+  #   images:
+  #     - "static/post-images/《Go语言高级编程》阅读笔记/"
+  #   # 额外配置（可选）
+  #   config:
+  #     split_by_h2: true  # 是否按二级标题拆分章节
+  #     frontmatter:
+  #       - "date"
+  #       - "tags"
+
+  # # 示例配置2：简化配置
+  # - source: "content/posts/2024/《设计模式之美》笔记.md"
+  #   images:
+  #     - "static/post-images/《设计模式之美》笔记/"
+
+  # # 示例配置3：多个图片目录
+  # - source: "content/posts/2023/深入理解Kubernetes.md"
+  #   images:
+  #     - "static/post-images/kubernetes/"
+  #     - "static/images/k8s-diagrams/"
+
+  - source: "content/posts/2025/《Go语言高级编程》阅读笔记.md"
+    images:
+      - "static/post-images/《Go语言高级编程》阅读笔记/"
+
+# 全局配置
+global:
+  # MkDocs仓库信息（GitHub Actions中使用的变量）
+  mkdocs_repo: "jinvic/read-notes"  # 替换为你的MkDocs仓库
+  mkdocs_branch: "main"
+  
+  # 图片处理配置
+  image_base_path: "assets/images"  # MkDocs中图片的基础路径
+  
+  # 转换选项
+  default_split_by_h2: true
+  # preserve_frontmatter: ["date", "tags", "categories"]
+  
+# 忽略列表（如果不想同步某些已配置的文章）
+# ignore:
+#   - "content/posts/2022/旧笔记.md"
