@@ -38,7 +38,7 @@ notes:
 global:
   # MkDocs仓库信息（GitHub Actions中使用的变量）
   mkdocs_repo: "jinvic/read-notes"  # 替换为你的MkDocs仓库
-  mkdocs_branch: "main"
+  mkdocs_branch: "master"
   
   # 图片处理配置
   image_base_path: "assets/images"  # MkDocs中图片的基础路径
