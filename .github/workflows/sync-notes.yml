@@ -83,15 +83,8 @@ jobs:
           # 如果是强制同步，加载所有笔记配置
           if [[ "${{ steps.decision.outputs.sync_reason }}" == "manual_force" ]]; then
             echo "🔄 强制同步模式：加载所有笔记"
+            python scripts/generate_notes_json.py
             
-            # 使用单行 Python 命令
-            python -c "import yaml, json; \
-            with open('sync-list.yaml', 'r', encoding='utf-8') as f: \
-                config = yaml.safe_load(f); \
-            notes = config.get('notes', []); \
-            print(f'共 {len(notes)} 篇笔记'); \
-            with open('.github/sync-data/notes.json', 'w', encoding='utf-8') as f: \
-                json.dump(notes, f, ensure_ascii=False, indent=2)"
           else
             # 使用检测到的变更笔记
             echo '${{ steps.check.outputs.changed_notes_json }}' > .github/sync-data/notes.json
