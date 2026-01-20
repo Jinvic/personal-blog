@@ -12,12 +12,6 @@ notes:
   #   # 关联的图片目录（相对Hugo根目录）
   #   images:
   #     - "static/post-images/《Go语言高级编程》阅读笔记/"
-  #   # 额外配置（可选）
-  #   config:
-  #     split_by_h2: true  # 是否按二级标题拆分章节
-  #     frontmatter:
-  #       - "date"
-  #       - "tags"
 
   # # 示例配置2：简化配置
   # - source: "content/posts/2024/《设计模式之美》笔记.md"
@@ -31,22 +25,12 @@ notes:
   #     - "static/images/k8s-diagrams/"
 
   - source: "content/posts/2025/《Go语言高级编程》阅读笔记.md"
+    target_dir: "tech/go/《Go语言高级编程》阅读笔记"
     images:
       - "static/post-images/《Go语言高级编程》阅读笔记/"
-
-# 全局配置
-global:
-  # MkDocs仓库信息（GitHub Actions中使用的变量）
-  mkdocs_repo: "jinvic/read-notes"  # 替换为你的MkDocs仓库
-  mkdocs_branch: "master"
-  
-  # 图片处理配置
-  image_base_path: "assets/images"  # MkDocs中图片的基础路径
-  
-  # 转换选项
-  default_split_by_h2: true
-  # preserve_frontmatter: ["date", "tags", "categories"]
-  
-# 忽略列表（如果不想同步某些已配置的文章）
-# ignore:
-#   - "content/posts/2022/旧笔记.md"
+  - source: "content/posts/2024/《Go程序设计语言》阅读笔记.md"
+    target_dir: "tech/go/《Go程序设计语言》阅读笔记"
+  - source: "content/posts/2023/【学习笔记】C++-Primer-Plus（第6版）【基础篇】.md"
+    target_dir: "tech/cpp/【学习笔记】C++-Primer-Plus（第6版）【基础篇】"
+    images:
+      - "static/post-images/【学习笔记】C++-Primer-Plus（第6版）【基础篇】/"
