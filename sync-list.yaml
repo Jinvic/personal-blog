@@ -24,13 +24,15 @@ notes:
   #     - "static/post-images/kubernetes/"
   #     - "static/images/k8s-diagrams/"
 
-  - source: "content/posts/2025/《Go语言高级编程》阅读笔记.md"
-    target_dir: "《Go语言高级编程》阅读笔记"
-    images:
-      - "static/post-images/《Go语言高级编程》阅读笔记/"
-  - source: "content/posts/2024/《Go程序设计语言》阅读笔记.md"
-    target_dir: "《Go程序设计语言》阅读笔记"
   - source: "content/posts/2023/【学习笔记】C++-Primer-Plus（第6版）【基础篇】.md"
     target_dir: "【学习笔记】C++-Primer-Plus（第6版）【基础篇】"
     images:
       - "static/post-images/【学习笔记】C++PrimerPlus（第6版）【基础篇】/"
+  - source: "content/posts/2024/《Go程序设计语言》阅读笔记.md"
+    target_dir: "《Go程序设计语言》阅读笔记"
+  - source: "content/posts/2025/《Go语言高级编程》阅读笔记.md"
+    target_dir: "《Go语言高级编程》阅读笔记"
+    images:
+      - "static/post-images/《Go语言高级编程》阅读笔记/"
+  - source: "content/posts/2025/《SQL必知必会》阅读笔记.md.md"
+    target_dir: "《SQL必知必会》阅读笔记.md"
