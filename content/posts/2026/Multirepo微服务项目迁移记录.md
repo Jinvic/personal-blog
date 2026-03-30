@@ -2,6 +2,8 @@
 title: Multirepo微服务项目迁移记录
 date: '2026-03-30T10:44:01+08:00'
 tags: 
+- Go
+- Docker
 categories:
 - 开发
 draft: false
