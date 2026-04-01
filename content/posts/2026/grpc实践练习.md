@@ -15,6 +15,8 @@ hiddenFromSearch: false
 - [grpc-go](https://grpc.org.cn/docs/languages/go/)
 - [protobuf](https://protobuf.dev/overview/)
 - [buf](https://buf.build/docs/cli/)
+- [protovalidate](https://protovalidate.com/about/)
+- [CEL by Example](https://celbyexample.com/)
 
 grpc相关的内容都十分繁琐，虽然看还是能看懂但自己写就抓瞎了。所以做一个项目边练边学尝试融会贯通所学内容。
 
@@ -267,3 +269,94 @@ message OrderBy {
 `option`之前有讲过，是语言特定的一些定义选项。
 
 `service`和`message`分别定义rpc服务和消息结构体，`repeated`和`enum`定义数组和枚举，语法都比较简单。
+
+## 参数校验
+
+protobuf原生不提供参数校验功能，需要引入第三方的插件（[protoc-gen-validate](https://github.com/bufbuild/protoc-gen-validate)）或者库（[protovalidate](https://github.com/bufbuild/protovalidate)）。这里我们选择`protovalidate`。
+
+`protovalidate`的详细语法在此不作赘述，可以查阅[文档](https://protovalidate.com/about/)进行了解。这里只简单介绍如何导入依赖和简单使用。
+
+首先要在`buf.yaml`中添加依赖，并执行`buf dep update`更新依赖：
+
+```yml
+version: v2
+modules:
+  - path: api
+deps:
+  - buf.build/bufbuild/protovalidate # new
+lint:
+  use:
+    - STANDARD
+breaking:
+  use:
+    - FILE
+```
+
+在proto文件中通过`import buf/validate/validate.proto`引入依赖，就可以添加验证规则了。添加验证后的`book.proto`部分代码如下：
+
+```protobuf
+message GetBookRequest {
+  int64 id = 1 [(buf.validate.field).int64.gte = 1];
+}
+
+message CreateBookRequest {
+  common.v1.Book book = 1 [(buf.validate.field).cel = {
+    id: "create_book.required_fields"
+    message: "title and author are required"
+    expression:
+      "this.title != ''"
+      "&& this.author != ''"
+  }];
+}
+
+message ListBooksRequest {
+  optional int32 page_number = 1 [(buf.validate.field).int32.gte = 1];
+  optional int32 page_size = 2 [(buf.validate.field).int32.gte = 1];
+  repeated common.v1.OrderBy order_by = 3;
+  map<string, google.protobuf.Value> filter = 4;
+}
+
+message UpdateBookRequest {
+  common.v1.Book book = 1 [(buf.validate.field).cel = {
+    id: "update_book.required_fields"
+    message: "id is required"
+    expression: "this.id > 0"
+  }];
+  google.protobuf.FieldMask update_mask = 2;
+}
+```
+
+可以看到，既可以直接为字段设置简单的验证规则，也可以使用cel表达式设置更为复杂的验证规则。
+
+要在go中执行参数校验，可以直接使用`protovalidate.Validate()`方法：
+
+```go
+package weather
+
+import (
+  bookv1 "bookstore/api/book/v1"
+  "buf.build/go/protovalidate"
+)
+
+func validateWeather(req *bookv1.GetBookRequest) error {
+  return protovalidate.Validate(req)
+}
+```
+
+而对`gRPC`项目，则可以将`protovalidate`注册为拦截器：
+
+```go
+// Create a Protovalidate Validator
+validator, err := protovalidate.New()
+if err != nil {
+  log.Fatal(err)
+}
+
+// Use the protovalidate_middleware interceptor provided by grpc-ecosystem
+interceptor := protovalidate_middleware.UnaryServerInterceptor(validator)
+
+// Include the interceptor when configuring the gRPC server.
+grpcServer := grpc.NewServer(
+  grpc.UnaryInterceptor(interceptor),
+)
+```
