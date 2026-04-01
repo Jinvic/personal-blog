@@ -232,3 +232,171 @@ message SampleMessage {
   }
 }
 ```
+
+## 知名类型
+
+提供了标量类型以外的预定义类型，位于`google.protobuf`包，源码在`protocolbuffers/protobuf`的[src/google/protobuf](https://github.com/protocolbuffers/protobuf/tree/main/src/google/protobuf)目录下。
+
+### 选择指南
+
+| 场景                   | 推荐类型                             |
+| ---------------------- | ------------------------------------ |
+| 需要精确时间点         | `Timestamp`                          |
+| 需要时间间隔           | `Duration`                           |
+| 需要表示空响应         | `Empty`                              |
+| 需要区分 0/null/未设置 | 包装类型（Int32Value 等）            |
+| 需要动态 JSON 数据     | `Struct`                             |
+| 需要部分更新           | `FieldMask`                          |
+| 需要动态类型           | `Any`                                |
+| 需要二进制数据         | `bytes`                              |
+| 不需要值区分           | 直接使用基础类型（int32, string 等） |
+
+### Struct/Any/Value比较
+
+| 特性         | **Struct**       | **Any**              | **Value**        |
+| ------------ | ---------------- | -------------------- | ---------------- |
+| **本质**     | JSON 对象        | 类型擦除的消息       | JSON 值          |
+| **数据格式** | Map + 动态类型   | 任意 Protobuf 消息   | 任意 JSON 类型   |
+| **类型安全** | 弱（运行时检查） | 强（需显式类型 URL） | 弱（运行时检查） |
+| **跨语言**   | JSON 兼容        | Protobuf 消息        | JSON 兼容        |
+| **典型用途** | 动态配置、元数据 | 插件系统、多态       | 任意值存储       |
+
+选择的关键在于：是需要存储 JSON 数据（用 Struct/Value），还是需要存储类型安全的 Protobuf 消息（用 Any）。
+
+### XxxValue
+
+这些包装类型主要用于兼容proto2，解决未设置和设置为默认值的问题。proto3中加入了`optional`，就不需要用到包装类型了。
+
+### Duration
+
+Duration 表示一个带符号的固定长度时间跨度，以秒和纳秒分辨率的秒分数表示。它独立于任何日历以及“天”或“月”等概念。它与 Timestamp 相关，因为两个 Timestamp 值之间的差是 Duration，并且可以从 Timestamp 中添加或减去。范围大约为 ±10,000 年。
+
+### Timestamp
+
+Timestamp 表示一个独立于任何时区或日历的时间点，以 UTC 纪元时间中的秒和纳秒分辨率的秒分数表示。Timestamp 类型以 RFC 3339 格式编码为字符串：“{year}-{month}-{day}T{hour}:{min}:{sec}[.{frac_sec}]Z”。
+
+| 字段名  | Type  | 描述                                                                                                                    |
+| ------- | ----- | ----------------------------------------------------------------------------------------------------------------------- |
+| seconds | int64 | 自 Unix 纪元 1970-01-01T00:00:00Z 以来 UTC 时间的秒数。必须在 0001-01-01T00:00:00Z 到 9999-12-31T23:59:59Z 之间（含）。 |
+| nanos   | int32 | 纳秒分辨率的非负小数秒。带有小数的负秒值仍必须具有向前计时的非负纳秒值。必须在 0 到 999,999,999 之间（含）。            |
+
+### FieldMask
+
+FieldMask 表示一组符号字段路径。该字段掩码用于指定应由获取操作返回（一个 *投影*）或由更新操作修改的字段子集。字段掩码也有自定义的 JSON 编码（见下文）。
+
+```txt
+// 字段掩码
+paths: "f.a"
+paths: "f.b.d"
+
+// 应用前
+f {
+  a : 22
+  b {
+    d : 1
+    x : 2
+  }
+  y : 13
+}
+z: 8
+
+// 应用后
+f {
+  a : 22
+  b {
+    d : 1
+  }
+}
+
+```
+
+代码示例：
+
+```protobuf
+// protobuf
+mask {
+  paths: "user.display_name"
+  paths: "photo"
+}
+```
+
+```json
+// json
+{
+  mask: "user.displayName,photo"
+}
+```
+
+| 字段名 | Type   | 描述             |
+| ------ | ------ | ---------------- |
+| paths  | string | 字段掩码路径集。 |
+
+### Any
+
+Any 包含一个任意序列化消息以及描述序列化消息类型的 URL。
+
+```protobuf
+package google.profile;
+message Person {
+  string first_name = 1;
+  string last_name = 2;
+}
+```
+
+```json
+{
+  "@type": "type.googleapis.com/google.profile.Person",
+  "firstName": <string>,
+  "lastName": <string>
+}
+```
+
+| 字段名   | Type   | 描述                                              |
+| -------- | ------ | ------------------------------------------------- |
+| type_url | string | 一个 URL/资源名称，其内容描述了序列化消息的类型。 |
+| value    | bytes  | 必须是上述指定类型的有效序列化数据。              |
+
+### Struct
+
+Struct 表示一个结构化数据值，由映射到动态类型值的字段组成。在某些语言中，Struct 可能由原生表示支持。
+
+| 字段名 | Type               | 描述               |
+| ------ | ------------------ | ------------------ |
+| fields | map<string, Value> | 动态类型值的映射。 |
+
+### Value
+
+Value 表示一个动态类型的值，可以是 null、数字、字符串、布尔值、递归结构体值或值列表。值的生成者应设置其中一种变体，缺少任何变体表示错误。
+
+Value 的 JSON 表示是 JSON 值。
+
+Value为联合字段，以下只有一个：
+
+| 字段名       | Type      | 描述                   |
+| ------------ | --------- | ---------------------- |
+| null_value   | NullValue | 表示一个空值。         |
+| number_value | double    | 表示一个双精度值。     |
+| string_value | string    | 表示一个字符串值。     |
+| bool_value   | bool      | 表示一个布尔值。       |
+| struct_value | Struct    | 表示一个结构化值。     |
+| list_value   | ListValue | 表示一个重复的 Value。 |
+
+### ListValue
+
+ListValue 是一个包含重复值字段的包装器。
+
+ListValue 的 JSON 表示是 JSON 数组。
+
+| 字段名 | Type  | 描述                   |
+| ------ | ----- | ---------------------- |
+| values | Value | 动态类型值的重复字段。 |
+
+### NullValue
+
+NullValue 是一个单例枚举，表示 Value 类型联合的空值。
+
+NullValue 的 JSON 表示是 JSON null。
+
+| 枚举值     | 描述   |
+| ---------- | ------ |
+| NULL_VALUE | 空值。 |
