@@ -5,9 +5,9 @@ tags:
 - Python
 categories:
 - 开发
-draft: false
-hiddenFromHomePage: false
-hiddenFromSearch: false
+draft: true
+hiddenFromHomePage: true
+hiddenFromSearch: true
 ---
 
 # 记一次MCP使用经历

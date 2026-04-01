@@ -2,7 +2,10 @@
 title: Grpc实践练习
 date: '2026-03-31T10:34:13+08:00'
 tags: 
-categories: 
+- Go
+- Protobuf
+categories:
+- 开发 
 draft: true
 hiddenFromHomePage: false
 hiddenFromSearch: false
