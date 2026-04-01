@@ -132,3 +132,138 @@ inputs:
 - `inputs`：输入列表，这个很好理解。这个配置是可选的，默认行为就是查找所有proto文件。具体可用参数参见[文档](https://buf.build/docs/configuration/v2/buf-gen-yaml/#inputs)。
 
 配置完成后可以使用`buf generate`生成go的stub代码。
+
+## protobuf
+
+protobuf的详细语法可以查阅[文档](https://protobuf.dev/programming-guides/proto3/)和[protobuf笔记](https://blog.jinvic.top/protobuf%E7%AC%94%E8%AE%B0/#%E8%AF%AD%E6%B3%95%E7%AE%80%E8%AE%B0)，在次不再赘述。
+
+这里只是结合目录结构和部分代码进行简单讲解。
+
+```bash
+./api/
+├── book/
+│   └── v1/
+│       └── book.proto
+└── common/
+    └── v1/
+        └── types.proto
+```
+
+```protobuf
+// api/book/v1/book.proto
+syntax = "proto3";
+
+package book.v1;
+
+import "common/v1/types.proto";
+import "google/protobuf/field_mask.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "bookstore/api/book/v1;bookv1";
+
+service BookService {
+  rpc GetBook(GetBookRequest) returns (GetBookResponse);
+  rpc CreateBook(CreateBookRequest) returns (CreateBookResponse);
+  rpc ListBooks(ListBooksRequest) returns (ListBooksResponse);
+  rpc UpdateBook(UpdateBookRequest) returns (UpdateBookResponse);
+  rpc DeleteBook(DeleteBookRequest) returns (DeleteBookResponse);
+}
+
+message GetBookRequest {
+  int64 id = 1;
+}
+
+message GetBookResponse {
+  common.v1.Book book = 1;
+}
+
+message CreateBookRequest {
+  common.v1.Book book = 1;
+}
+
+message CreateBookResponse {
+  common.v1.Book book = 1;
+}
+
+message ListBooksRequest {
+  int32 page_number = 1;
+  int32 page_size = 2;
+  repeated common.v1.OrderBy order_by = 3;
+  map<string, google.protobuf.Value> filter = 4;
+}
+
+message ListBooksResponse {
+  repeated common.v1.Book books = 1;
+  int32 total_count = 2;
+  int32 page_number = 3;
+  int32 page_size = 4;
+}
+
+message UpdateBookRequest {
+  common.v1.Book book = 1;
+  google.protobuf.FieldMask update_mask = 2;
+}
+
+message UpdateBookResponse {
+  common.v1.Book book = 1;
+}
+
+message DeleteBookRequest {
+  int64 id = 1;
+}
+
+message DeleteBookResponse {
+  int64 id = 1;
+  google.protobuf.Timestamp deleted_at = 2;
+}
+
+```
+
+```protobuf
+// api/common/v1/types.proto
+syntax = "proto3";
+
+package common.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "bookstore/api/common/v1;commonv1";
+
+enum BookStatus {
+  BOOK_STATUS_UNSPECIFIED = 0;
+  BOOK_STATUS_AVAILABLE = 1; // 可用
+  BOOK_STATUS_UNAVAILABLE = 2; // 不可用
+  BOOK_STATUS_BORROWED = 3; // 借出
+  BOOK_STATUS_LOST = 4; // 丢失
+  BOOK_STATUS_RESERVED = 6; // 预约
+}
+
+message Book {
+  int64 id = 1;
+  BookStatus status = 2;
+  google.protobuf.Timestamp created_at = 3;
+  google.protobuf.Timestamp updated_at = 4;
+  google.protobuf.Timestamp deleted_at = 5;
+  string title = 6;
+  string author = 7;
+  double price = 8;
+  string isbn = 9;
+  string publisher = 10;
+  google.protobuf.Timestamp published_at = 11;
+}
+
+message OrderBy {
+  string field = 1;
+  bool ascending = 2;
+}
+
+```
+
+`package`是proto之间互相引用的包名。可以注意到`book.proto`从`types.proto`引用`Book`时就是`common.v1.Book`。
+
+`import`用于引入其他proto文件，可以是本地文件也可以是从其他地方引入。例如`book.proto`的`import "common/v1/types.proto";`就是本地proto，`import "google/protobuf/struct.proto";`就是`google/protobuf`里的proto。需要注意的是，即使是同一目录下的不同文件在引用时也需要显式`import`，这点和Go的默认行为并不一致。
+
+`option`之前有讲过，是语言特定的一些定义选项。
+
+`service`和`message`分别定义rpc服务和消息结构体，`repeated`和`enum`定义数组和枚举，语法都比较简单。
