@@ -233,6 +233,16 @@ message SampleMessage {
 }
 ```
 
+### 定义服务
+
+如果想将的消息类型与 RPC（远程过程调用）系统一起使用，您可以在 .proto 文件中定义一个 RPC 服务接口，protocol buffer 编译器将以选择的语言生成服务接口代码和存根 (stub)。
+
+```protobuf
+service SearchService {
+  rpc Search(SearchRequest) returns (SearchResponse);
+}
+```
+
 ## 知名类型
 
 提供了标量类型以外的预定义类型，位于`google.protobuf`包，源码在`protocolbuffers/protobuf`的[src/google/protobuf](https://github.com/protocolbuffers/protobuf/tree/main/src/google/protobuf)目录下。
