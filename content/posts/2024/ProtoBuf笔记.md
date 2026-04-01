@@ -410,3 +410,7 @@ NullValue 的 JSON 表示是 JSON null。
 | 枚举值     | 描述   |
 | ---------- | ------ |
 | NULL_VALUE | 空值。 |
+
+## 参数校验
+
+对于原生protoc生态，可以使用`protoc-gen-validate`([PGV](https://github.com/bufbuild/protoc-gen-validate))插件。而对于新项目/[buf](https://buf.build/docs/cli/)生态，更推荐使用[protovalidate](https://protovalidate.com/about/)，支持[CEL](https://cel.dev/?hl=zh-cn)表达式，有着更完善强大的验证功能。可以在[CEL by Example](https://celbyexample.com/)快速学习了解cel在protovalidate中的使用。
