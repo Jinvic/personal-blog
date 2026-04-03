@@ -5,10 +5,10 @@ year:="2026"
 build:
     hugo
 
-test:
+serve:
     hugo server --disableFastRender
 
-test2:
+served:
     hugo server --disableFastRender -D
 
 # 创建新文章
