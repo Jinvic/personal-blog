@@ -16,7 +16,7 @@ hiddenFromSearch: false
 
 [mox](https://github.com/mjl-/mox)是一个现代功能齐全的开源安全邮件服务器，适用于低维护的自托管电子邮件。我之前也使用过[docker-mailserver](https://github.com/docker-mailserver/docker-mailserver)，但它作为生产级的邮件服务器内存占用太大，有200-300M左右。相比之下，mox就显得轻量多了，只有20-30M。作为个人使用，当然是占用越低越好。而且mox自带一个开箱即用的Webmail，不用再额外部署[Roundcube](https://github.com/roundcube/roundcubemail)之类的邮件客户端。
 
-## 开发端口配置
+## 开放端口配置
 
 邮件服务用到的端口有`143,25,443,587,993`等。在你的服务器防火墙上开放这些端口。同时，也别忘了在云服务商的安全组（防火墙）中放行这些端口。
 
