@@ -6,7 +6,7 @@ tags:
 categories:
 - 笔记
 - 自部署
-draft: true
+draft: false
 hiddenFromHomePage: false
 hiddenFromSearch: false
 ---
@@ -31,84 +31,13 @@ hiddenFromSearch: false
 - touch 创建文件/修改文件属性
 - nohup 在系统后台不挂断地运行命令
 - hostname -I 获取ip地址，用户访问wsl中启动的服务
+- du 查看文件占用
+
+## 常用软件
 
 - nano 编辑器，对没linux基础的我来说比vim好用
+- micro 也是编辑器，需要额外安装。操作逻辑更接近windows
 - htop 交互式进程查看器，支持鼠标操作
-
-## 部分应用安装
-
-只是做个集合整理，避免每次重装时一个个去翻文档和官网。
-
-### 安装vfox
-
-[来源](https://vfox.lhan.me/zh-hans/guides/quick-start.html)
-
-**安装vfox**：
-
-apt安装命令：
-
-```bash
-echo "deb [trusted=yes] https://apt.fury.io/versionfox/ /" | sudo tee /etc/apt/sources.list.d/versionfox.list
- sudo apt-get update
- sudo apt-get install vfox
-```
-
-**挂载vfox到Shell**：
-
-```bash
-echo 'eval "$(vfox activate bash)"' >> ~/.bashrc
-```
-
-### 安装make
-
-这里使用vfox安装并进行版本管理。
-同时作个vfox安装应用教程。
-
-``` bash
-# 添加插件
-vfox add make
-# 查看所有可用版本
-# vfox search make
-# 安装最新版本
-vfox install make@latest
-# 设置使用版本
-vfox use -g make
-```
-
-其中作用域参数有`-p -g -s`三种，分别表示项目，全局，会话。详情略。
-
-### 安装protobuf
-
-[来源](https://grpc.org.cn/docs/protoc-installation/)
-
-虽然vfox提供了unofficial的protobuf插件，但好像有bug安装不了，还是用apt了。
-
-```bash
-sudo apt install -y protobuf-compiler
-```
-
-如果要进行go开发，还需要额外安装插件：
-
-```bash
-go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-```
-
-### 安装go
-
-还是使用vfox，见上[安装make](#安装make)。
-
-不要忘了更新path，虽然好像不加这行也能在其他目录调用。可能vfox时默认加的：
-
-```bash
-export PATH="$PATH:$(go env GOPATH)/bin"
-```
-
-如果要进行grpc开发，还需要安装对应插件：
-
-```bash
-go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
-```
 
 ## WSL2重装系统
 
