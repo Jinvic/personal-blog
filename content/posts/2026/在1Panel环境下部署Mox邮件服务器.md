@@ -108,7 +108,7 @@ docker-compose run mox mox quickstart -existing-webserver -skipdial -hostname ma
 
 这里的`$(id -u)`是获取当前用户的 UID，而不是`$(id -u mox)`。示例命令的`$(id -u mox)`是在宿主机创建了`mox`系统用户的情况下。如果没有创建，可以省略或使用当前用户id。
 
-我们启用了`-existing-webserver`和`-skipdial`选项。前者是因为我们是部署在1Panel环境，80/443端口已被`OpenResty`占用。后者是因为部署在腾讯云服务器上，而国内大厂基本都禁用了25端口的出方向，避免被滥用发垃圾邮件。虽然可以尝试申请解封，但比较麻烦。我还是选择通过resend进行smtp中继。如果你也和我一样选择中继方案，或者暂时没有外发邮件的需求，强烈建议启用 `-skipdial`来避免`mox quickstart`因无法连接外部 25 端口而报错。或者如果是更宽松的提供商，可以直接使用25端口发信，则不必启用改选项。
+我们启用了`-existing-webserver`和`-skipdial`选项。前者是因为我们是部署在1Panel环境，80/443端口已被`OpenResty`占用。后者是因为部署在腾讯云服务器上，而国内大厂基本都禁用了25端口的出方向，避免被滥用发垃圾邮件。虽然可以尝试申请解封，但比较麻烦。我还是选择通过resend进行smtp中继。如果你也和我一样选择中继方案，或者暂时没有外发邮件的需求，强烈建议启用 `-skipdial`来避免`mox quickstart`因无法连接外部 25 端口而报错。或者如果是更宽松的提供商，可以直接使用25端口发信，则不必启用该选项。
 
 运行命令后如果没问题会输出大段日志内容，结尾是：
 
@@ -247,9 +247,9 @@ cd your-mox-docker-workspace && sudo docker compose restart mox
 
 ## 反向代理配置
 
-观察`mox.conf`可以发现，启用`-existing-webserver`后mox将大部分服务都放在了`1080`端口，而`AutoconfigHTTPS`和`MTASTSHTTPS`服务在`81`端口。我们配置反向代理时，将`main.yourdomain.com`转发至`1080`端口，`autoconfig.yourdomain.com`和`mta-sts`转发至`81`端口。记得配置https证书。
+观察`mox.conf`可以发现，启用`-existing-webserver`后mox将大部分服务都放在了`1080`端口，而`AutoconfigHTTPS`和`MTASTSHTTPS`服务在`81`端口。我们配置反向代理时，将`main.yourdomain.com`转发至`1080`端口，`autoconfig.yourdomain.com`和`mta-sts.yourdomain.com`转发至`81`端口。记得配置https证书。
 
-可以通过`https://mail.yourdomain.com/`访问**账号管理**页面，`https://mail.yourdomain.com/webmail/`访问`Webmail`页面。密码在之前的`quickstart.log`中。
+配置完成后，可以通过`https://mail.yourdomain.com/`访问**账号管理**页面，`https://mail.yourdomain.com/webmail/`访问**Webmail**页面。密码在之前的`quickstart.log`中。
 
 我们不能直接通过域名`https://mail.yourdomain.com/admin/`访问**管理后台**页面，因为mox为了安全只允许从本地访问。可以使用`ssh`访问服务器并通过`-L`进行本地端口转发来访问管理后台页面：
 
@@ -338,4 +338,4 @@ Domains:
 
 ## 总结
 
-至此，一个轻量、现代且完全自主掌控的邮件服务器就部署完成了。现在，你拥有了一个资源占用极低（约 30M 内存）、自带 Webmail 的全功能邮箱系统。即可用于日常通信，也可作为深入理解电子邮件协议的实践练习。自建邮件服务的路途虽然略显曲折，但当发出第一封签着自己域名的邮件时，那份掌控感和成就感是无可替代的。
+至此，一个轻量、现代且完全自主掌控的邮件服务器就部署完成了。现在，你拥有了一个资源占用极低（约 30M 内存）、自带 Webmail 的全功能邮箱系统。既可用于日常通信，也可作为深入理解电子邮件协议的实践练习。自建邮件服务的路途虽然略显曲折，但当发出第一封签着自己域名的邮件时，那份掌控感和成就感是无可替代的。
