@@ -14,7 +14,7 @@ hiddenFromSearch: false
 
 > Mox is a modern full-featured open source secure mail server for low-maintenance self-hosted email.
 
-[mox](https://github.com/mjl-/mox)是一个现代功能齐全的开源安全邮件服务器，适用于低维护的自托管电子邮件。我之前也使用过[docker-mailserver](https://github.com/docker-mailserver/docker-mailserver)，但它作为生产级的邮件服务器内存占用太大，有200~300M左右。相比之下，mox就显得轻量多了，只有20~30M。作为个人使用，当然是占用越低越好。而且mox自带一个开箱即用的Webmail，不用再额外部署[Roundcube](https://github.com/roundcube/roundcubemail)之类的邮件客户端。
+[mox](https://github.com/mjl-/mox)是一个现代功能齐全的开源安全邮件服务器，适用于低维护的自托管电子邮件。我之前也使用过[docker-mailserver](https://github.com/docker-mailserver/docker-mailserver)，但它作为生产级的邮件服务器内存占用太大，有200-300M左右。相比之下，mox就显得轻量多了，只有20-30M。作为个人使用，当然是占用越低越好。而且mox自带一个开箱即用的Webmail，不用再额外部署[Roundcube](https://github.com/roundcube/roundcubemail)之类的邮件客户端。
 
 ## 开发端口配置
 
