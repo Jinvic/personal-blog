@@ -18,7 +18,7 @@ hiddenFromSearch: false
 
 ## 开放端口配置
 
-邮件服务用到的端口有`143,25,443,587,993`等。在你的服务器防火墙上开放这些端口。同时，也别忘了在云服务商的安全组（防火墙）中放行这些端口。
+邮件服务用到的端口有`143,25,465,587,993`等。在你的服务器防火墙上开放这些端口。同时，也别忘了在云服务商的安全组（防火墙）中放行这些端口。
 
 ## docker部署初始化
 
@@ -339,3 +339,43 @@ Domains:
 ## 总结
 
 至此，一个轻量、现代且完全自主掌控的邮件服务器就部署完成了。现在，你拥有了一个资源占用极低（约 30M 内存）、自带 Webmail 的全功能邮箱系统。既可用于日常通信，也可作为深入理解电子邮件协议的实践练习。自建邮件服务的路途虽然略显曲折，但当发出第一封签着自己域名的邮件时，那份掌控感和成就感是无可替代的。
+
+## 进一步了解
+
+[Command reference](https://www.xmox.nl/commands)
+
+要执行mox命令，除了直接`docker compuse run mox ...`，也可以执行`docker compose exec -it mox /bin/sh`进入容器并启动交互式shell。
+
+### 账号管理
+
+如果你不满足于`mox quickstart`创建的管理员账号，想要创建更多账号用于分发或者专项任务，可以使用`mox config account`命令管理账号和`mox setaccountpassword`命令设置密码。具体用法如下：
+
+```bash
+mox config account list
+mox config account add account address
+mox config account rm account
+mox config account rm account
+mox config account disable account message
+mox config account enable account
+mox setaccountpassword account
+```
+
+### 数据备份
+
+你可以使用`mox backup`和`mox verifydata`命令来备份和恢复数据。具体用法如下：
+
+```bash
+usage: mox backup destdir
+  -verbose
+      print progress
+
+usage: mox verifydata data-dir
+  -fix
+      fix fixable problems, such as moving away message files not referenced by their database
+  -skip-size-check
+      skip the check for message size
+```
+
+### SMTP发信
+
+mox默认使用`465`端口进行smtp发信。服务地址可以使用`mail.yourdomain.com`，也可以专门配置一个`smtp.yourdomain.com`的DNS记录。账号密码使用quickstart创建的账号就行。也可以为不同的服务创建专门的邮箱账号。
