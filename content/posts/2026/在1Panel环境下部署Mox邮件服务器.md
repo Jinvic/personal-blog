@@ -254,10 +254,10 @@ cd your-mox-docker-workspace && sudo docker compose restart mox
 我们不能直接通过域名`https://mail.yourdomain.com/admin/`访问**管理后台**页面，因为mox为了安全只允许从本地访问。可以使用`ssh`访问服务器并通过`-L`进行本地端口转发来访问管理后台页面：
 
 ```bash
-ssh -L 8080:localhost:80 you@yourmachine
+ssh -L 8080:localhost:1080 you@yourmachine
 ```
 
-然后在你的本地机器上访问localhost:80就行。
+然后在你的本地机器上访问`localhost:8080/admin`就行。
 
 如果你觉得ssh太麻烦，也可以在1Panel中为`/admin/`路径单独配置反向代理，将后端域名由`$host`改为`localhost`，强制mox认为请求来自本地，就可以通过`https://mail.yourdomain.com/admin/`访问了。
 
