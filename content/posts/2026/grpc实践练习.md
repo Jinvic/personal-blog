@@ -25,7 +25,9 @@ grpc相关的内容都十分繁琐，虽然看还是能看懂但自己写就抓�
 
 ## 项目结构
 
-项目结构没有什么最佳实践之类，按自己喜欢的来就行。主要protobuf有一套自己的包机制，和go混在一起容易混淆。搞清楚`package`和`option go_package`等配置就怎么写都行。
+项目结构没有什么最佳实践之类，按自己喜欢的来就行。
+
+protobuf有一套自己的包机制，和go混在一起容易混淆。搞清楚`package`和`option go_package`等配置就放哪都行。
 
 ```bash
 ./
@@ -38,9 +40,35 @@ grpc相关的内容都十分繁琐，虽然看还是能看懂但自己写就抓�
 │       └── v1/
 │           └── types.proto
 ├── buf.gen.yaml
+├── buf.lock
 ├── buf.yaml
+├── cmd/
+│   ├── client/
+│   └── server/
+│       └── book/
+│           └── main.go
 ├── go.mod
-└── go.sum
+├── go.sum
+└── internal/
+    ├── client/
+    └── server/
+        └── book/
+            ├── model/
+            │   ├── biz/
+            │   │   └── book.go
+            │   └── db/
+            │       └── book.go
+            ├── repo/
+            │   ├── book.go
+            │   └── converter.go
+            ├── server/
+            │   ├── di.go
+            │   └── server.go
+            ├── service/
+            │   ├── book.go
+            │   └── converter.go
+            └── usecase/
+                └── book.go
 ```
 
 ## buf
@@ -274,6 +302,123 @@ message OrderBy {
 `option`之前有讲过，是语言特定的一些定义选项。
 
 `service`和`message`分别定义rpc服务和消息结构体，`repeated`和`enum`定义数组和枚举，语法都比较简单。
+
+## gRPC服务端
+
+关于proto部分，在之前已经介绍地差不多了。现在我们来看看如何在go中实现gorc服务端并用上之前的proto stub。
+
+如下是我规划的项目结构，按照`server → service → usecase → repo`进行分层：
+
+```bash
+./
+├── api/
+├── cmd/
+│   ├── client/
+│   └── server/
+│       └── book/ # 入口
+└── internal/
+    ├── client/
+    └── server/
+        └── book/
+            ├── model/
+            │   ├── biz/ # 业务层模型
+            │   └── db/  # 数据库模型
+            ├── repo/    # 数据仓库层
+            ├── server/  # gRPC server
+            ├── service/ # gRPC 服务实现
+            └── usecase/ # 用例层
+```
+
+首先我们要实现在proto中定义的服务，如下：
+
+```go
+type BookService struct {
+  bookv1.UnimplementedBookServiceServer
+  bu *usecase.BookUsecase
+}
+
+func NewBookService(bu *usecase.BookUsecase) *BookService {
+  return &BookService{bu: bu}
+}
+
+func (s *BookService) GetBook(ctx context.Context, req *bookv1.GetBookRequest) (*bookv1.GetBookResponse, error) {
+  bizBook, err := s.bu.GetBook(ctx, req.Id)
+  if err != nil {
+    return nil, status.Errorf(codes.Internal, "failed to get book: %v", err)
+  }
+
+  return &bookv1.GetBookResponse{Book: BizToV1Book(bizBook)}, nil
+}
+
+func (s *BookService) CreateBook(ctx context.Context, req *bookv1.CreateBookRequest) (*bookv1.CreateBookResponse, error) {
+  // ...
+}
+
+func (s *BookService) ListBooks(ctx context.Context, req *bookv1.ListBooksRequest) (*bookv1.ListBooksResponse, error) {
+  // ...
+}
+
+func (s *BookService) UpdateBook(ctx context.Context, req *bookv1.UpdateBookRequest) (*bookv1.UpdateBookResponse, error) {
+  // ...
+}
+
+func (s *BookService) DeleteBook(ctx context.Context, req *bookv1.DeleteBookRequest) (*bookv1.DeleteBookResponse, error) {
+  // ...
+}
+```
+
+我们需要自行定义一个结构体，嵌入protobuf生成的stub代码中的`UnimplementedXXXServer`结构体，并实现相关方法。这就相当于handler或controller层了。
+
+然后我们启动gprc服务。此处的依赖注入实现较简略仅作示例。生产环境可以换成`wire`或`dig`。
+
+```go
+// internal/server/book/server/server.go
+type BookServer struct {
+  port int
+}
+
+func NewBookServer(port int) *BookServer {
+  return &BookServer{port: port}
+}
+
+func (s *BookServer) Run(ctx context.Context) error {
+
+  lis, err := net.Listen("tcp", fmt.Sprintf(":%d", s.port))
+  if err != nil {
+    return fmt.Errorf("failed to listen: %w", err)
+  }
+  defer lis.Close()
+
+  grpcServer := grpc.NewServer()
+  bookv1.RegisterBookServiceServer(grpcServer, BuildBookService())
+
+  go func() {
+    <-ctx.Done()
+    log.Println("shutting down server...")
+    grpcServer.GracefulStop()
+  }()
+
+  log.Printf("server listening at port %d", s.port)
+  if err := grpcServer.Serve(lis); err != nil {
+    if err == grpc.ErrServerStopped {
+      log.Println("server stopped")
+      return nil
+    }
+    return fmt.Errorf("failed to serve: %w", err)
+  }
+  return nil
+}
+
+func BuildBookService() *service.BookService {
+  br := repo.NewBookRepository()
+  bu := usecase.NewBookUsecase(br)
+  return service.NewBookService(bu)
+}
+```
+
+总结流程，首先使用`net.Listen()`监听一个端口，然后用`grpc.NewServer()`声明一个`grpc.Server`类型的grpc服务，使用stub代码中的`RegisterBookServiceServer()`方法将你自定义的结构体注册到这个grpc服务中，最后用`grpc.Server.Serve()`在监听器上提供服务。
+
+继续往项目里填充crud代码，运行`go run cmd/server/book/main.go`就可以启动这个服务了。
 
 ## 参数校验
 
