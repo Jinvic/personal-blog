@@ -119,7 +119,7 @@ inputs:
 ```
 
 - `managed`：托管模式。可以将文件和字段`option`统一定义在`buf.gen.yaml`中而不是在每个proto文件中都写一遍。例如我的配置就等价于`option go_package = "bookstore/api/book/v1;bookv1";`。更多配置项参见[文档](https://buf.build/docs/generate/managed-mode)。
-  如果需要覆写多个文件的option使用`managed mode`会很方便，但为单个文件专门反而增加了复杂度。此外，虽然启用`managed mode`后原proto文件中可以不写相关option，但还是建议也写上保持对原生protoc的兼容等。
+  如果需要覆写多个文件的option使用`managed mode`会很方便，但为少数文件专门使用反而增加了复杂度。此外，虽然启用`managed mode`后原proto文件中可以不写相关option，但还是建议也写上保持对原生protoc的兼容等。
 - `plugins`：使用插件。这里的`remote`指的是托管在`BSR`([Buf Schema Registry](https://buf.build/plugins))上的远程插件。也可以使用protoc的内置插件和本地插件。例如使用本地插件的示例如下：
 
   ```yml
@@ -269,6 +269,8 @@ message OrderBy {
 
 `import`用于引入其他proto文件，可以是本地文件也可以是从其他地方引入。例如`book.proto`的`import "common/v1/types.proto";`就是本地proto，`import "google/protobuf/struct.proto";`就是`google/protobuf`里的proto。需要注意的是，即使是同一目录下的不同文件在引用时也需要显式`import`，这点和Go的默认行为并不一致。
 
+这里我们在引入`google/protobuf`的相关文件时不需要显式声明依赖，是因为`google/protobuf`是内置在`protobuf`中的，相当与标准库。而在引入其他第三方库时，往往需要手动安装（protoc）或显式声明（buf cli）。
+
 `option`之前有讲过，是语言特定的一些定义选项。
 
 `service`和`message`分别定义rpc服务和消息结构体，`repeated`和`enum`定义数组和枚举，语法都比较简单。
@@ -334,14 +336,14 @@ message UpdateBookRequest {
 要在go中执行参数校验，可以直接使用`protovalidate.Validate()`方法：
 
 ```go
-package weather
+package book
 
 import (
   bookv1 "bookstore/api/book/v1"
   "buf.build/go/protovalidate"
 )
 
-func validateWeather(req *bookv1.GetBookRequest) error {
+func validateBook(req *bookv1.GetBookRequest) error {
   return protovalidate.Validate(req)
 }
 ```
