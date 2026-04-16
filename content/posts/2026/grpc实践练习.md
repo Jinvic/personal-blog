@@ -420,6 +420,154 @@ func BuildBookService() *service.BookService {
 
 继续往项目里填充crud代码，运行`go run cmd/server/book/main.go`就可以启动这个服务了。
 
+## grpcurl
+
+要测试启动的grpc服务是否可用，可以实现一个客户端，也可以使用[grpcurl](https://github.com/fullstorydev/grpcurl)这个工具。我想等服务端足够完善后再去实现客户端，就选择了后者。
+
+```bash
+go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
+```
+
+### 启用反射服务
+
+由于grpc使用protobuf的二进制编码，而不是json那种自描述的文本编码，所以我们需要提供proto文件或者反射服务，让客户端了解服务列表、方法列表、消息定义等。通常完整客户端都是和服务端公用相同的proto文件，而我们为了调试方便使用`grpcurl`时就启用反射服务。
+
+可以使用`google.golang.org/grpc/reflection`包将`grpc.Server`注册到反射服务中：
+
+```go
+import "google.golang.org/grpc/reflection"
+
+func (s *BookServer) Run(ctx context.Context) error {
+  // ...
+
+  grpcServer := grpc.NewServer()
+  reflection.Register(grpcServer) // new
+  bookv1.RegisterBookServiceServer(grpcServer, BuildBookService())
+
+  // ...
+}
+```
+
+反射服务在收到查询请求时，会**实时查询**`grpc.Server`中已注册的所有服务，而不是快照注册时的服务列表，所以注册反射服务和注册业务服务的顺序没有影响。
+
+### grpcurl基础用法
+
+现在我们可以通过`grpcurl`调用grpc服务了，用法为：`grpcurl [flags] [address] [list|describe] [symbol]`。
+
+```bash
+-plaintext
+      Use plain-text HTTP/2 when connecting to server (no TLS).
+```
+
+由于我们实现的服务端没有启用证书，所以我们`grpcurl`测试时的所有命令都要添加`-plaintext`选项来进行明文通讯。生产环境应该启用tls加密。
+
+可以使用`list`查看服务和方法列表：
+
+```bash
+$ grpcurl -plaintext localhost:8081 list
+book.v1.BookService
+grpc.reflection.v1.ServerReflection
+grpc.reflection.v1alpha.ServerReflection
+
+$ grpcurl -plaintext localhost:8081 list book.v1.BookService
+book.v1.BookService.CreateBook
+book.v1.BookService.DeleteBook
+book.v1.BookService.GetBook
+book.v1.BookService.ListBooks
+book.v1.BookService.UpdateBook
+```
+
+可以使用`describe`查看服务和方法列表：
+
+```bash
+$ grpcurl -plaintext localhost:8081 describe book.v1.BookService
+book.v1.BookService is a service:
+service BookService {
+  rpc CreateBook ( .book.v1.CreateBookRequest ) returns ( .book.v1.CreateBookResponse );
+  rpc DeleteBook ( .book.v1.DeleteBookRequest ) returns ( .book.v1.DeleteBookResponse );
+  rpc GetBook ( .book.v1.GetBookRequest ) returns ( .book.v1.GetBookResponse );
+  rpc ListBooks ( .book.v1.ListBooksRequest ) returns ( .book.v1.ListBooksResponse );
+  rpc UpdateBook ( .book.v1.UpdateBookRequest ) returns ( .book.v1.UpdateBookResponse );
+}
+
+$ grpcurl -plaintext localhost:8081 describe book.v1.BookService.GetBook
+book.v1.BookService.GetBook is a method:
+rpc GetBook ( .book.v1.GetBookRequest ) returns ( .book.v1.GetBookResponse );
+
+$ grpcurl -plaintext localhost:8081 describe .book.v1.GetBookResponse                           
+book.v1.GetBookResponse is a message:
+message GetBookResponse {
+  .common.v1.Book book = 1;
+}
+
+$ grpcurl -plaintext localhost:8081 describe .common.v1.Book
+common.v1.Book is a message:
+message Book {
+  int64 id = 1;
+  .common.v1.BookStatus status = 2;
+  .google.protobuf.Timestamp created_at = 3;
+  .google.protobuf.Timestamp updated_at = 4;
+  .google.protobuf.Timestamp deleted_at = 5;
+  string title = 6;
+  string author = 7;
+  double price = 8;
+  string isbn = 9;
+  string publisher = 10;
+  .google.protobuf.Timestamp published_at = 11;
+}
+```
+
+最后是调用方法，可以通过`-d`标志传入一个json字符串作为输入参数。如果传入`@`字符则是从标准输入读取json作为参数，一般用于复杂json输入，也可用于测试流方法。
+
+```bash
+$ grpcurl -plaintext -d '{"id":1}' localhost:8081 book.v1.BookService/GetBook
+{
+  "book": {
+    "id": "1",
+    "title": "The Great Gatsby",
+    "author": "F. Scott Fitzgerald",
+    "price": 10.99,
+    "isbn": "978-0-7432-1967-1",
+    "publisher": "Scribner",
+    "publishedAt": "2026-04-16T01:47:46.470161300Z"
+  }
+}
+
+# linux
+$ grpcurl -plaintext -d @ localhost:8081 book.v1.BookService/GetBook <<EOM
+{"id": 1}
+EOM
+{
+  "book": {
+    "id": "1",
+    "title": "The Great Gatsby",
+    "author": "F. Scott Fitzgerald",
+    "price": 10.99,
+    "isbn": "978-0-7432-1967-1",
+    "publisher": "Scribner",
+    "publishedAt": "2026-04-16T01:47:11.511262700Z"
+  }
+}
+```
+
+```pwsh
+# windows(Powershell)
+> @"
+{"id": 1}
+"@ | grpcurl -plaintext -d '@' localhost:8081 book.v1.BookService/GetBook
+{
+  "book": {
+    "id": "1",
+    "title": "The Great Gatsby",
+    "author": "F. Scott Fitzgerald",
+    "price": 10.99,
+    "isbn": "978-0-7432-1967-1",
+    "publisher": "Scribner",
+    "publishedAt": "2026-04-16T02:02:47.932611Z"
+  }
+}
+```
+
 ## 参数校验
 
 protobuf原生不提供参数校验功能，需要引入第三方的插件（[protoc-gen-validate](https://github.com/bufbuild/protoc-gen-validate)）或者库（[protovalidate](https://github.com/bufbuild/protovalidate)）。这里我们选择`protovalidate`。
