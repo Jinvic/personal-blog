@@ -15,11 +15,16 @@ hiddenFromSearch: false
 
 参考：
 
-- [grpc-go](https://grpc.org.cn/docs/languages/go/)
-- [protobuf](https://protobuf.dev/overview/)
 - [buf](https://buf.build/docs/cli/)
+- [protobuf EN](https://protobuf.dev/overview/)
+- [protobuf CN](https://protobuf.com.cn/overview/)
+- [grpc-go EN](https://grpc.io/docs/languages/go/)
+- [grpc-go CN](https://grpc.org.cn/docs/languages/go/)
+- [grpcurl](https://github.com/fullstorydev/grpcurl)
 - [protovalidate](https://protovalidate.com/about/)
 - [CEL by Example](https://celbyexample.com/)
+- [go-grpc-middleware](https://github.com/grpc-ecosystem/go-grpc-middleware)
+- [grpc-gateway](https://github.com/grpc-ecosystem/grpc-gateway)
 
 grpc相关的内容都十分繁琐，虽然看还是能看懂但自己写就抓瞎了。所以做一个项目边练边学尝试融会贯通所学内容。
 
@@ -332,6 +337,7 @@ message OrderBy {
 首先我们要实现在proto中定义的服务，如下：
 
 ```go
+// internal/server/book/service/book.go
 type BookService struct {
   bookv1.UnimplementedBookServiceServer
   bu *usecase.BookUsecase
@@ -430,7 +436,7 @@ go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
 
 ### 启用反射服务
 
-由于grpc使用protobuf的二进制编码，而不是json那种自描述的文本编码，所以我们需要提供proto文件或者反射服务，让客户端了解服务列表、方法列表、消息定义等。通常完整客户端都是和服务端公用相同的proto文件，而我们为了调试方便使用`grpcurl`时就启用反射服务。
+由于grpc使用protobuf的二进制编码，而不是json那种自描述的文本编码，所以我们需要提供proto文件或者反射服务，让客户端了解服务列表、方法列表、消息定义等。通常完整客户端都是和服务端共用相同的proto文件，而我们为了调试方便使用`grpcurl`时就启用反射服务。
 
 可以使用`google.golang.org/grpc/reflection`包将`grpc.Server`注册到反射服务中：
 
@@ -626,35 +632,46 @@ message UpdateBookRequest {
 
 可以看到，既可以直接为字段设置简单的验证规则，也可以使用cel表达式设置更为复杂的验证规则。
 
-要在go中执行参数校验，可以直接使用`protovalidate.Validate()`方法：
+要在go中执行参数校验，需要安装`buf.build/go/protovalidate`依赖。
+
+```bash
+go get buf.build/go/protovalidate@latest
+```
+
+可以直接使用`protovalidate.Validate()`方法验证proto转换的结构体：
 
 ```go
-package book
+// internal/server/book/service/book.go
+func (s *BookService) GetBook(ctx context.Context, req *bookv1.GetBookRequest) (*bookv1.GetBookResponse, error) {
+  protovalidate.Validate(req) // new
+  bizBook, err := s.bu.GetBook(ctx, req.Id)
+  if err != nil {
+    return nil, status.Errorf(codes.Internal, "failed to get book: %v", err)
+  }
 
-import (
-  bookv1 "bookstore/api/book/v1"
-  "buf.build/go/protovalidate"
-)
-
-func validateBook(req *bookv1.GetBookRequest) error {
-  return protovalidate.Validate(req)
+  return &bookv1.GetBookResponse{Book: BizToV1Book(bizBook)}, nil
 }
 ```
 
 而对`gRPC`项目，则可以将`protovalidate`注册为拦截器：
 
 ```go
-// Create a Protovalidate Validator
-validator, err := protovalidate.New()
-if err != nil {
-  log.Fatal(err)
+// internal/server/book/server/server.go
+func (s *BookServer) Run(ctx context.Context) error {
+  // ...
+  validator, err := protovalidate.New()
+  if err != nil {
+    return fmt.Errorf("failed to create validator: %w", err)
+  }
+
+  interceptor := func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+    if err := validator.Validate(req.(proto.Message)); err != nil {
+      return nil, status.Errorf(codes.InvalidArgument, "invalid request: %v", err)
+    }
+    return handler(ctx, req)
+  }
+
+  grpcServer := grpc.NewServer(grpc.UnaryInterceptor(interceptor))
+  // ...
 }
-
-// Use the protovalidate_middleware interceptor provided by grpc-ecosystem
-interceptor := protovalidate_middleware.UnaryServerInterceptor(validator)
-
-// Include the interceptor when configuring the gRPC server.
-grpcServer := grpc.NewServer(
-  grpc.UnaryInterceptor(interceptor),
-)
 ```
