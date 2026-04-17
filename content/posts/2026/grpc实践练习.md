@@ -675,3 +675,40 @@ func (s *BookServer) Run(ctx context.Context) error {
   // ...
 }
 ```
+
+### 扩展：gRPC校验方案演进史
+
+```mermaid
+timeline
+title gRPC校验方案演进史
+section 2017-2019 
+方案A：go-proto-validators
+: 早期方案，需生成代码<br>与 go-grpc-middleware 配合
+section 2019-2023 
+方案B：protoc-gen-validate (PGV)
+: 成为事实标准<br>规则更丰富，生成代码成熟
+section 2023-Now 
+方案C：protovalidate
+: Buf 官方推出<br>无代码生成，性能更强
+```
+
+- 方案A：`go-proto-validators` (较老，生态渐微)
+  - **规则定义**：在 `.proto` 中使用 `(validator.field)` 选项。
+  - **校验执行**：通过 `protoc` 插件 **生成** Go代码，代码中包含 `Validate()` 方法。
+  - **gRPC集成**：需要手动调用 `msg.Validate()`，或使用 `go-grpc-middleware/validator` 拦截器自动调用。
+  - **当前状态**：**维护少，不推荐新项目**。作者 `mwitkow` 已停止主动维护，且对最新 `protobuf` API 支持不佳。
+- 方案B：`protoc-gen-validate` (PGV) (主流，但正被取代)
+  - **规则定义**：在 `.proto` 中使用 `(validate.rules)` 选项。
+  - **校验执行**：通过 `protoc` 插件 **生成** Go代码，代码中包含 `ValidateAll()` 等方法。
+  - **gRPC集成**：同方案A，可手动调用或使用 `go-grpc-middleware/validator` 拦截器。
+  - **当前状态**：**非常成熟，大量项目在用**。但依赖代码生成，且已被更优的方案C挑战。
+- 方案C：`protovalidate` (Buf出品，现代推荐)
+  - **规则定义**：在 `.proto` 中使用 `(buf.validate.field)` 选项 (更丰富的规则集)。
+  - **校验执行**：**无需代码生成**。在运行时动态读取 `.proto` 中的规则并执行校验。提供 `protovalidate.Validate(msg)` 函数。
+  - **gRPC集成**：可手动调用，或使用官方提供的 `protovalidate/interceptors` 包中的拦截器。
+  - **当前状态**：**未来方向**。Buf 公司官方维护，性能好，不污染生成的代码。
+
+**总结**：
+
+- 老方案：在proto里写规则 → 生成 Validate() 方法 → 用 go-grpc-middleware 的拦截器自动调用。
+- 新方案：在proto里写规则 → 直接调用 protovalidate.Validate() 或它的拦截器。
