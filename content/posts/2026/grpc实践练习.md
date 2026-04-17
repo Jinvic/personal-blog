@@ -705,10 +705,116 @@ section 2023-Now
 - 方案C：`protovalidate` (Buf出品，现代推荐)
   - **规则定义**：在 `.proto` 中使用 `(buf.validate.field)` 选项 (更丰富的规则集)。
   - **校验执行**：**无需代码生成**。在运行时动态读取 `.proto` 中的规则并执行校验。提供 `protovalidate.Validate(msg)` 函数。
-  - **gRPC集成**：可手动调用，或使用官方提供的 `protovalidate/interceptors` 包中的拦截器。
+  - **gRPC集成**：可手动调用，或使用 `go-grpc-middleware/protovalidate` 包中的拦截器。
   - **当前状态**：**未来方向**。Buf 公司官方维护，性能好，不污染生成的代码。
 
 **总结**：
 
 - 老方案：在proto里写规则 → 生成 Validate() 方法 → 用 go-grpc-middleware 的拦截器自动调用。
 - 新方案：在proto里写规则 → 直接调用 protovalidate.Validate() 或它的拦截器。
+
+## 拦截器
+
+既然上一节提到了拦截器，这一节就展开讲讲。拦截器其实就相当于其他地方的“中间件”（middleware）概念，用于在rpc调用前后执行特定操作。
+
+客户端和服务端拦截器不同，一元和流式rpc的拦截器也不同，两两组合遍有四种拦截器：
+
+```go
+type UnaryClientInterceptor func(ctx context.Context, method string, req, reply any, cc *ClientConn, invoker UnaryInvoker, opts ...CallOption) error
+type StreamClientInterceptor func(ctx context.Context, desc *StreamDesc, cc *ClientConn, method string, streamer Streamer, opts ...CallOption) (ClientStream, error)
+type UnaryServerInterceptor func(ctx context.Context, req any, info *UnaryServerInfo, handler UnaryHandler) (resp any, err error)
+type StreamServerInterceptor func(srv any, ss ServerStream, info *StreamServerInfo, handler StreamHandler) error
+```
+
+我们目前只有服务端一元rpc，就暂时只考虑这个，使用示例同上节：
+
+```go
+// internal/server/book/server/server.go
+func (s *BookServer) Run(ctx context.Context) error {
+  // ...
+  validator, err := protovalidate.New()
+  if err != nil {
+    return fmt.Errorf("failed to create validator: %w", err)
+  }
+
+  interceptor := func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+    if err := validator.Validate(req.(proto.Message)); err != nil {
+      return nil, status.Errorf(codes.InvalidArgument, "invalid request: %v", err)
+    }
+    return handler(ctx, req)
+  }
+
+  grpcServer := grpc.NewServer(grpc.UnaryInterceptor(interceptor))
+  // ...
+}
+```
+
+这里使用`grpc.UnaryInterceptor()`注册拦截器。需要注意的是该方法只能注册一个拦截器，所以如果有多个拦截器需要手动处理链式调用。不过grpc在`v1.28.0`中更新了`ChainUnaryInterceptor()`方法，可以直接链式注册多个拦截器，就不再需要手动处理了。两者的定义如下：
+
+```go
+func UnaryInterceptor(i UnaryServerInterceptor) ServerOption
+func ChainUnaryInterceptor(interceptors ...UnaryServerInterceptor) ServerOption
+```
+
+拦截器全堆在server里太臃肿了，让我们更新项目结构，将拦截器统一放在统一目录下管理：
+
+```bash
+.\internal\server\common\/
+└── interceptor/
+    ├── initialize.go
+    └── validator.go
+```
+
+除了手动定义拦截器，[go-grpc-middleware](https://github.com/grpc-ecosystem/go-grpc-middleware)中也提供了很多现成的拦截器可用。例如我们之前的验证拦截器就可以使用`protovalidate`这个子包：
+
+```go
+// internal/server/common/interceptor/initialize.go
+package interceptor
+
+func Initialize() error {
+  if err := InitValidateInterceptor(); err != nil {
+    return err
+  }
+  return nil
+}
+
+// internal/server/common/interceptor/validator.go
+package interceptor
+
+import (
+  "buf.build/go/protovalidate"
+  protovalidate_middleware "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/protovalidate"
+  "google.golang.org/grpc"
+)
+
+var (
+  validator protovalidate.Validator
+)
+
+func InitValidateInterceptor() error {
+  var err error
+  validator, err = protovalidate.New()
+  if err != nil {
+    return err
+  }
+  return nil
+}
+
+func ValidateInterceptor(opts ...protovalidate_middleware.Option) grpc.UnaryServerInterceptor {
+  return protovalidate_middleware.UnaryServerInterceptor(validator, opts...)
+}
+
+
+// internal/server/book/server/server.go
+func (s *BookServer) Run(ctx context.Context) error {
+  // ...
+  grpcServer := grpc.NewServer(
+    grpc.ChainUnaryInterceptor(
+      interceptor.ValidateInterceptor(),
+    ),
+  )
+  // ...
+}
+```
+
+`go-grpc-middleware`中还有很多优秀的拦截器可用，感兴趣可以探索一下。
