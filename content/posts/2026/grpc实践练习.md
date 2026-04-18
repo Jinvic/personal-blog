@@ -770,7 +770,7 @@ type UnaryServerInterceptor func(ctx context.Context, req any, info *UnaryServer
 type StreamServerInterceptor func(srv any, ss ServerStream, info *StreamServerInfo, handler StreamHandler) error
 ```
 
-我们先看看服务端一元rpc，使用示例同上节：
+我们先看看服务端一元rpc拦截器，使用示例同上节：
 
 ```go
 // internal/server/book/server/server.go
@@ -863,6 +863,44 @@ func (s *BookServer) Run(ctx context.Context) error {
       interceptor.ValidateStreamInterceptor(),
     ),
   )
+  // ...
+}
+```
+
+再是客户端一元rpc拦截器，例如超时控制就可以实现如下：
+
+```go
+func TimeoutInterceptor(timeout time.Duration) grpc.UnaryClientInterceptor {
+  return func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+    timedCtx, cancel := context.WithTimeout(ctx, timeout)
+    defer cancel()
+    return invoker(timedCtx, method, req, reply, cc, opts...)
+  }
+}
+```
+
+`go-grpc-middleware`也封装好了超时控制和连接重试等客户端拦截器，我们可以直接集成到之前的客户端实现中：
+
+```go
+import(
+  "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/retry"
+  "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/timeout"
+)
+
+func NewClient(host string, port int) (*Client, error) {
+  serverAddr := fmt.Sprintf("%s:%d", host, port)
+  opts := []grpc.DialOption{
+    grpc.WithTransportCredentials(insecure.NewCredentials()),
+    // new
+    grpc.WithChainUnaryInterceptor(
+      timeout.UnaryClientInterceptor(5*time.Second),
+      retry.UnaryClientInterceptor(
+        retry.WithMax(3),
+        retry.WithPerRetryTimeout(2*time.Second),
+      ),
+    ),
+  }
+  conn, err := grpc.NewClient(serverAddr, opts...)
   // ...
 }
 ```
