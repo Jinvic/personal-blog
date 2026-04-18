@@ -428,7 +428,7 @@ func BuildBookService() *service.BookService {
 
 ## grpcurl
 
-要测试启动的grpc服务是否可用，可以实现一个客户端，也可以使用[grpcurl](https://github.com/fullstorydev/grpcurl)这个工具。我想等服务端足够完善后再去实现客户端，就选择了后者。
+要测试启动的grpc服务是否可用，可以实现一个客户端，也可以使用[grpcurl](https://github.com/fullstorydev/grpcurl)这个工具。就简单测试而言直接使用`grpcurl`就行。
 
 ```bash
 go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
@@ -573,6 +573,50 @@ EOM
   }
 }
 ```
+
+## grpc客户端
+
+除了使用grpcurl直接测试grpc服务，还需要实现grpc客户端供微服务之间互相调用。如下是一个实现示例：
+
+```go
+// internal/client/book/client.go
+type Client struct {
+  bookv1.BookServiceClient
+  conn *grpc.ClientConn
+}
+
+func NewClient(host string, port int) (*Client, error) {
+  serverAddr := fmt.Sprintf("%s:%d", host, port)
+
+  opts := []grpc.DialOption{
+    grpc.WithTransportCredentials(insecure.NewCredentials()),
+  }
+  conn, err := grpc.NewClient(serverAddr, opts...)
+  if err != nil {
+    return nil, fmt.Errorf("failed to create client: %w", err)
+  }
+  return &Client{
+    BookServiceClient: bookv1.NewBookServiceClient(conn),
+    conn:              conn,
+  }, nil
+}
+
+func (c *Client) Close() error {
+  return c.conn.Close()
+}
+
+func (c *Client) GetBook(ctx context.Context, id int64) (*commonv1.Book, error) {
+  resp, err := c.BookServiceClient.GetBook(ctx, &bookv1.GetBookRequest{Id: id})
+  if err != nil {
+    return nil, fmt.Errorf("failed to get book: %w", err)
+  }
+  return resp.Book, nil
+}
+
+// ...
+```
+
+逻辑还是比较清晰的。首先确认服务地址`serverAddr`，然后处理连接选项`opts`。这里我们使用的`grpc.WithTransportCredentials(insecure.NewCredentials())`，因为服务端没有启用tls加密。通过`grpc.NewClient()`获取到一个grpc连接`conn`，再通过`bookv1.NewBookServiceClient()`创建book服务的客户端。需要注意的是，要将`conn`变量保存下来用于关闭连接。最后我们为客户端实现各个方法就行。
 
 ## 参数校验
 
@@ -726,7 +770,7 @@ type UnaryServerInterceptor func(ctx context.Context, req any, info *UnaryServer
 type StreamServerInterceptor func(srv any, ss ServerStream, info *StreamServerInfo, handler StreamHandler) error
 ```
 
-我们目前只有服务端一元rpc，就暂时只考虑这个，使用示例同上节：
+我们先看看服务端一元rpc，使用示例同上节：
 
 ```go
 // internal/server/book/server/server.go
@@ -800,17 +844,23 @@ func InitValidateInterceptor() error {
   return nil
 }
 
-func ValidateInterceptor(opts ...protovalidate_middleware.Option) grpc.UnaryServerInterceptor {
+func ValidateUnaryInterceptor(opts ...protovalidate_middleware.Option) grpc.UnaryServerInterceptor {
   return protovalidate_middleware.UnaryServerInterceptor(validator, opts...)
 }
 
+func ValidateStreamInterceptor(opts ...protovalidate_middleware.Option) grpc.StreamServerInterceptor {
+  return protovalidate_middleware.StreamServerInterceptor(validator, opts...)
+}
 
 // internal/server/book/server/server.go
 func (s *BookServer) Run(ctx context.Context) error {
   // ...
   grpcServer := grpc.NewServer(
     grpc.ChainUnaryInterceptor(
-      interceptor.ValidateInterceptor(),
+      interceptor.ValidateUnaryInterceptor(),
+    ),
+    grpc.ChainStreamInterceptor(
+      interceptor.ValidateStreamInterceptor(),
     ),
   )
   // ...
