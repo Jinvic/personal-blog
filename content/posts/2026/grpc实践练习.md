@@ -618,6 +618,262 @@ func (c *Client) GetBook(ctx context.Context, id int64) (*commonv1.Book, error) 
 
 逻辑还是比较清晰的。首先确认服务地址`serverAddr`，然后处理连接选项`opts`。这里我们使用的`grpc.WithTransportCredentials(insecure.NewCredentials())`，因为服务端没有启用tls加密。通过`grpc.NewClient()`获取到一个grpc连接`conn`，再通过`bookv1.NewBookServiceClient()`创建book服务的客户端。需要注意的是，要将`conn`变量保存下来用于关闭连接。最后我们为客户端实现各个方法就行。
 
+## 流式rpc
+
+除了常规的请求-响应，grpc还支持各种流式rpc方法，包括客户端流，服务端流和双向流等。让我们为各种流式方法设计业务场景并尝试实现：
+
+- 客户端流：批量导入
+- 服务端流：批量导出
+- 双向流：心跳检测
+
+### protobuf定义流
+
+在protobuf中，要启用流特性，需要在声明方法时添加`stream`关键字进行标识：
+
+```protobuf
+service BookService {
+  rpc GetBook(GetBookRequest) returns (GetBookResponse);
+  rpc CreateBook(CreateBookRequest) returns (CreateBookResponse);
+  rpc ListBooks(ListBooksRequest) returns (ListBooksResponse);
+  rpc UpdateBook(UpdateBookRequest) returns (UpdateBookResponse);
+  rpc DeleteBook(DeleteBookRequest) returns (DeleteBookResponse);
+  // new
+  rpc BatchImportBooks(stream BatchImportBooksRequest) returns (BatchImportBooksResponse);
+  rpc BatchExportBooks(BatchExportBooksRequest) returns (stream BatchExportBooksResponse);
+  rpc HeartBeat(stream HeartBeatRequest) returns (stream HeartBeatResponse);
+}
+
+
+message BatchImportBooksRequest {
+  common.v1.Book book = 1;
+}
+
+message BatchImportBooksResponse {
+  int32 total = 1;
+  int32 success = 2;
+  repeated string error_messages = 3;
+}
+
+message BatchExportBooksRequest {
+  repeated int64 book_ids = 1;
+}
+
+message BatchExportBooksResponse {
+  int64 book_id = 1;
+  common.v1.Book book = 2;
+  string error_message = 3;
+}
+
+message HeartBeatRequest {
+  // 1: ping, 2: pong
+  common.v1.HeartBeatType type = 1;
+  int64 sent_at = 2;
+}
+
+message HeartBeatResponse {
+  // 1: ping, 2: pong
+  common.v1.HeartBeatType type = 1;
+  int64 sent_at = 2;
+  int64 received_at = 3;
+}
+
+enum HeartBeatType {
+  HEART_BEAT_TYPE_UNSPECIFIED = 0;
+  HEART_BEAT_TYPE_PING = 1; // 心跳请求
+  HEART_BEAT_TYPE_PONG = 2; // 心跳响应
+}
+```
+
+### 流式rpc服务端实现
+
+然后是三个方法的服务端go实现，方法签名如下：
+
+```go
+func (s *BookService) BatchImportBooks(stream bookv1.BookService_BatchImportBooksServer) error
+func (s *BookService) BatchExportBooks(req *bookv1.BatchExportBooksRequest, stream bookv1.BookService_BatchExportBooksServer) error
+func (s *BookService) HeartBeat(stream bookv1.BookService_HeartBeatServer) error
+```
+
+可以看到，它使用`服务名_方法名Server`取代了原来的`request`和`response`。查看定义可以发现请求和响应被封装到了对应的流接口中：
+
+```go
+type BookService_BatchImportBooksServer = grpc.ClientStreamingServer[BatchImportBooksRequest, BatchImportBooksResponse]
+type BookService_BatchExportBooksServer = grpc.ServerStreamingServer[BatchExportBooksResponse]
+type BookService_HeartBeatServer = grpc.BidiStreamingServer[HeartBeatRequest, HeartBeatResponse]
+```
+
+查看接口定义，可以看到它们各自定义了`Send()`和`Recv()`等相关方法用于发送和接收消息。
+
+```go
+type ServerStreamingServer[Res any] interface {
+  Send(*Res) error
+  ServerStream
+}
+
+type ClientStreamingServer[Req any, Res any] interface {
+  Recv() (*Req, error)
+  SendAndClose(*Res) error
+  ServerStream
+}
+
+type BidiStreamingServer[Req any, Res any] interface {
+  Recv() (*Req, error)
+  Send(*Res) error
+  ServerStream
+}
+```
+
+需要注意的是，这些方法都**不是并发安全**的。因为对于绝大多数简单的、顺序处理的流，一个内置的`sync.Mutex`会带来不必要的性能损耗。同时gRPC的设计者也希望开发者明确地规划发送和接收的角色权限。所以如果在多个goroutine中都有调用同一个方法，需要自行设计同步机制。
+
+按照由易到难的顺序，我们依次实现服务端流，客户端流和双向流。
+
+首先是服务端流，只有一次输入，分多次输出结果：
+
+```go
+func (s *BookService) BatchExportBooks(req *bookv1.BatchExportBooksRequest, stream bookv1.BookService_BatchExportBooksServer) error {
+  for _, bookId := range req.BookIds {
+    book, err := s.bu.GetBook(stream.Context(), bookId)
+    if err != nil {
+      if sendErr := stream.Send(&bookv1.BatchExportBooksResponse{
+        BookId:       bookId,
+        ErrorMessage: fmt.Sprintf("failed to get book %s: %v", book.Title, err),
+      }); sendErr != nil {
+        return status.Errorf(codes.Internal, "failed to send response: %v", sendErr)
+      }
+      continue
+    }
+    if err := stream.Send(&bookv1.BatchExportBooksResponse{Book: BizToV1Book(book)}); err != nil {
+      return status.Errorf(codes.Internal, "failed to send response: %v", err)
+    }
+  }
+  return nil
+}
+```
+
+然后是客户端流，多次输入直到流关闭，最后一次性输出结果。
+
+```go
+func (s *BookService) BatchImportBooks(stream bookv1.BookService_BatchImportBooksServer) error {
+  var total int32
+  var success int32
+  var errorMessages []string
+  for {
+    req, err := stream.Recv()
+    if err == io.EOF {
+      break
+    }
+    if err != nil {
+      return status.Errorf(codes.Internal, "failed to receive request: %v", err)
+    }
+    bizBook := V1ToBizBook(req.Book)
+    _, err = s.bu.CreateBook(stream.Context(), bizBook)
+    if err != nil {
+      errorMessages = append(errorMessages, fmt.Sprintf("failed to create book %s: %v", bizBook.Title, err))
+    } else {
+      success++
+    }
+    total++
+
+  }
+  return stream.SendAndClose(&bookv1.BatchImportBooksResponse{
+    Total:         total,
+    Success:       success,
+    ErrorMessages: errorMessages,
+  })
+}
+```
+
+最后是双向流，双方都随时可以进行输入输出：
+
+```go
+func (s *BookService) HeartBeat(stream bookv1.BookService_HeartBeatServer) error {
+  sendCh := make(chan *bookv1.HeartBeatResponse, 10)
+  done := make(chan struct{})
+  defer close(done)
+
+  // 发送消息到客户端
+  sender := func() {
+    for {
+      select {
+      case msg, ok := <-sendCh:
+        if !ok {
+          return
+        }
+        if err := stream.Send(msg); err != nil {
+          log.Printf("failed to send message: %v", err)
+          return
+        }
+        log.Println("sent message:", msg.Type)
+      case <-done:
+        log.Println("sender goroutine stopped")
+        return
+      case <-stream.Context().Done():
+        log.Println("client disconnected, stopping sender goroutine")
+        return
+      }
+    }
+  }
+
+  // 定时发送心跳消息
+  ticker := func() {
+    jitter := time.Duration(rand.Intn(10)) * time.Second
+    ticker := time.NewTicker(1*time.Minute + jitter)
+    defer ticker.Stop()
+
+    for {
+      select {
+      case <-ticker.C:
+        sendCh <- &bookv1.HeartBeatResponse{
+          Type:   commonv1.HeartBeatType_HEART_BEAT_TYPE_PING,
+          SentAt: time.Now().UnixMilli(),
+        }
+      case <-done:
+        log.Println("ticker goroutine stopped")
+        return
+      case <-stream.Context().Done():
+        log.Println("client disconnected, stopping ticker goroutine")
+        return
+      }
+    }
+  }
+
+  // 接收客户端的心跳消息
+  receiver := func() error {
+    for {
+      req, err := stream.Recv()
+      if err == io.EOF {
+        break
+      }
+      if err != nil {
+        return status.Errorf(codes.Internal, "failed to receive request: %v", err)
+      }
+
+      receivedAt := time.Now().UnixMilli()
+      switch req.Type {
+      case commonv1.HeartBeatType_HEART_BEAT_TYPE_PING:
+        sendCh <- &bookv1.HeartBeatResponse{
+          Type:       commonv1.HeartBeatType_HEART_BEAT_TYPE_PONG,
+          SentAt:     req.SentAt,
+          ReceivedAt: receivedAt,
+        }
+      case commonv1.HeartBeatType_HEART_BEAT_TYPE_PONG:
+        log.Println("received pong, latency:", receivedAt-req.SentAt)
+      default:
+        log.Println("received unknown heart beat type")
+        return status.Errorf(codes.InvalidArgument, "unknown heart beat type: %v", req.Type)
+      }
+    }
+    return nil
+  }
+
+  go ticker()
+  go sender()
+  return receiver()
+}
+```
+
+### 流式rpc客户端实现
+
 ## 参数校验
 
 protobuf原生不提供参数校验功能，需要引入第三方的插件（[protoc-gen-validate](https://github.com/bufbuild/protoc-gen-validate)）或者库（[protovalidate](https://github.com/bufbuild/protovalidate)）。这里我们选择`protovalidate`。
