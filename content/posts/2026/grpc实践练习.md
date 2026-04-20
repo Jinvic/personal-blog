@@ -723,7 +723,7 @@ type BidiStreamingServer[Req any, Res any] interface {
 }
 ```
 
-需要注意的是，这些方法都**不是并发安全**的。因为对于绝大多数简单的、顺序处理的流，一个内置的`sync.Mutex`会带来不必要的性能损耗。同时gRPC的设计者也希望开发者明确地规划发送和接收的角色权限。所以如果在多个goroutine中都有调用同一个方法，需要自行设计同步机制。
+需要注意的是，这些方法都**不是并发安全**的。因为对于绝大多数简单的、顺序处理的流，一个内置的`sync.Mutex`会带来不必要的性能损耗。同时gRPC的设计者也希望开发者明确地规划发送和接收的角色权限。所以如果在多个goroutine中都有调用同一个方法，需要自行设计同步机制。例如使用一个专用的goroutine来执行所有的`Send()`或`Recv()`操作，或者使用`sync.Mutex`进行保护。
 
 按照由易到难的顺序，我们依次实现服务端流，客户端流和双向流。
 
@@ -848,15 +848,14 @@ func (s *BookService) HeartBeat(stream bookv1.BookService_HeartBeatServer) error
         return status.Errorf(codes.Internal, "failed to receive request: %v", err)
       }
 
-      receivedAt := time.Now().UnixMilli()
       switch req.Type {
       case commonv1.HeartBeatType_HEART_BEAT_TYPE_PING:
         sendCh <- &bookv1.HeartBeatResponse{
-          Type:       commonv1.HeartBeatType_HEART_BEAT_TYPE_PONG,
-          SentAt:     req.SentAt,
-          ReceivedAt: receivedAt,
+          Type:   commonv1.HeartBeatType_HEART_BEAT_TYPE_PONG,
+          SentAt: req.SentAt,
         }
       case commonv1.HeartBeatType_HEART_BEAT_TYPE_PONG:
+        receivedAt := time.Now().UnixMilli()
         log.Println("received pong, latency:", receivedAt-req.SentAt)
       default:
         log.Println("received unknown heart beat type")
@@ -873,6 +872,177 @@ func (s *BookService) HeartBeat(stream bookv1.BookService_HeartBeatServer) error
 ```
 
 ### 流式rpc客户端实现
+
+然后我们尝试实现客户端。流式rpc的服务端和客户端实现差不多，都是操作一个流对象通过`Send()`和`Recv()`等相关方法收发信息。
+
+客户端的各种流接口定义如下：
+
+```go
+type ServerStreamingClient[Res any] interface {
+  Recv() (*Res, error)
+  ClientStream
+}
+type ClientStreamingClient[Req any, Res any] interface {
+  Send(*Req) error
+  CloseAndRecv() (*Res, error)
+  ClientStream
+}
+type BidiStreamingClient[Req any, Res any] interface {
+  Send(*Req) error
+  Recv() (*Res, error)
+  ClientStream
+}
+
+```
+
+和服务端流接口一样，这些方法也**不是并发安全**的，需要自行设计同步机制。
+
+具体实现如下：
+
+**服务端流**：
+
+```go
+func (c *Client) BatchExportBooks(ctx context.Context, bookIds []int64) ([]*commonv1.Book, []string, error) {
+  req := &bookv1.BatchExportBooksRequest{BookIds: bookIds}
+  stream, err := c.BookServiceClient.BatchExportBooks(ctx, req)
+  if err != nil {
+    return nil, nil, fmt.Errorf("failed to export books: %w", err)
+  }
+
+  books := make([]*commonv1.Book, 0)
+  errorMessages := make([]string, 0)
+  for {
+    resp, err := stream.Recv()
+    if err == io.EOF {
+      break
+    }
+    if err != nil {
+      return nil, nil, fmt.Errorf("failed to receive response: %w", err)
+    }
+    if resp.ErrorMessage != "" {
+      errorMessages = append(errorMessages, fmt.Sprintf("failed to export book with ID %d: %s", resp.BookId, resp.ErrorMessage))
+      continue
+    }
+    books = append(books, resp.Book)
+  }
+  return books, errorMessages, nil
+}
+```
+
+**客户端流**：
+
+```go
+func (c *Client) BatchImportBooks(ctx context.Context, books []*commonv1.Book) (*bookv1.BatchImportBooksResponse, error) {
+  stream, err := c.BookServiceClient.BatchImportBooks(ctx)
+  if err != nil {
+    return nil, fmt.Errorf("failed to import books: %w", err)
+  }
+  for _, book := range books {
+    err := stream.Send(&bookv1.BatchImportBooksRequest{Book: book})
+    if err != nil {
+      return nil, fmt.Errorf("failed to send request: %w", err)
+    }
+  }
+  resp, err := stream.CloseAndRecv()
+  if err != nil {
+    return nil, fmt.Errorf("failed to close stream: %w", err)
+  }
+  return resp, nil
+}
+```
+
+**双向流**：
+
+```go
+func (c *Client) HeartBeat(ctx context.Context) error {
+  stream, err := c.BookServiceClient.HeartBeat(ctx)
+  if err != nil {
+    return fmt.Errorf("failed to create heart beat stream: %w", err)
+  }
+
+  sendCh := make(chan *bookv1.HeartBeatRequest, 10)
+  done := make(chan struct{})
+  defer close(done)
+
+  // 发送消息到服务端
+  sender := func() {
+    for {
+      select {
+      case msg, ok := <-sendCh:
+        if !ok {
+          return
+        }
+        if err := stream.Send(msg); err != nil {
+          log.Printf("failed to send message: %v", err)
+          return
+        }
+        log.Println("sent message:", msg.Type)
+      case <-done:
+        log.Println("sender goroutine stopped")
+        return
+      case <-stream.Context().Done():
+        log.Println("client disconnected, stopping sender goroutine")
+        return
+      }
+    }
+  }
+
+  // 定时发送心跳消息
+  ticker := func() {
+    jitter := time.Duration(rand.Intn(10)) * time.Second
+    ticker := time.NewTicker(1*time.Minute + jitter)
+    defer ticker.Stop()
+
+    for {
+      select {
+      case <-ticker.C:
+        sendCh <- &bookv1.HeartBeatRequest{
+          Type:   commonv1.HeartBeatType_HEART_BEAT_TYPE_PING,
+          SentAt: time.Now().UnixMilli(),
+        }
+      case <-done:
+        log.Println("ticker goroutine stopped")
+        return
+      case <-stream.Context().Done():
+        log.Println("client disconnected, stopping ticker goroutine")
+        return
+      }
+    }
+  }
+
+  // 接收服务端的心跳消息
+  receiver := func() error {
+    for {
+      req, err := stream.Recv()
+      if err == io.EOF {
+        break
+      }
+      if err != nil {
+        return status.Errorf(codes.Internal, "failed to receive request: %v", err)
+      }
+
+      switch req.Type {
+      case commonv1.HeartBeatType_HEART_BEAT_TYPE_PING:
+        sendCh <- &bookv1.HeartBeatRequest{
+          Type:   commonv1.HeartBeatType_HEART_BEAT_TYPE_PONG,
+          SentAt: req.SentAt,
+        }
+      case commonv1.HeartBeatType_HEART_BEAT_TYPE_PONG:
+        receivedAt := time.Now().UnixMilli()
+        log.Println("received pong, latency:", receivedAt-req.SentAt)
+      default:
+        log.Println("received unknown heart beat type")
+        return status.Errorf(codes.InvalidArgument, "unknown heart beat type: %v", req.Type)
+      }
+    }
+    return nil
+  }
+
+  go ticker()
+  go sender()
+  return receiver()
+}
+```
 
 ## 参数校验
 
@@ -1026,6 +1196,8 @@ type UnaryServerInterceptor func(ctx context.Context, req any, info *UnaryServer
 type StreamServerInterceptor func(srv any, ss ServerStream, info *StreamServerInfo, handler StreamHandler) error
 ```
 
+### 服务端一元rpc拦截器
+
 我们先看看服务端一元rpc拦截器，使用示例同上节：
 
 ```go
@@ -1123,6 +1295,8 @@ func (s *BookServer) Run(ctx context.Context) error {
 }
 ```
 
+### 客户端一元rpc拦截器
+
 再是客户端一元rpc拦截器，例如超时控制就可以实现如下：
 
 ```go
@@ -1162,3 +1336,7 @@ func NewClient(host string, port int) (*Client, error) {
 ```
 
 `go-grpc-middleware`中还有很多优秀的拦截器可用，感兴趣可以探索一下。
+
+### 服务端流式rpc拦截器
+
+### 客户端流式rpc拦截器
