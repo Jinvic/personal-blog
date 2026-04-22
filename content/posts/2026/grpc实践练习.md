@@ -1210,7 +1210,11 @@ func (s *BookServer) Run(ctx context.Context) error {
   }
 
   interceptor := func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
-    if err := validator.Validate(req.(proto.Message)); err != nil {
+    msg, ok := req.(proto.Message)
+    if !ok {
+      return status.Errorf(codes.Internal, "unsupported message type: %T", req)
+    }
+    if err := validator.Validate(msg); err != nil {
       return nil, status.Errorf(codes.InvalidArgument, "invalid request: %v", err)
     }
     return handler(ctx, req)
@@ -1339,4 +1343,136 @@ func NewClient(host string, port int) (*Client, error) {
 
 ### 服务端流式rpc拦截器
 
+```go
+type UnaryServerInterceptor func(ctx context.Context, req any, info *UnaryServerInfo, handler UnaryHandler) (resp any, err error)
+```
+
+之前在[服务端一元rpc拦截器](#服务端一元rpc拦截器)中，我们通过`go-grpc-middleware`包直接提供了流式验证拦截器。尝试手动实现一下：
+
+```go
+var (
+  validator protovalidate.Validator
+)
+
+func InitValidateInterceptor() error {
+  var err error
+  validator, err = protovalidate.New()
+  if err != nil {
+    return err
+  }
+  return nil
+}
+
+func ValidateStreamInterceptor() grpc.StreamServerInterceptor {
+  return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+    return handler(srv, &wrappedServerStream{
+      ServerStream: ss,
+      validator:    validator,
+    })
+  }
+}
+
+type wrappedServerStream struct {
+  grpc.ServerStream
+  validator protovalidate.Validator
+}
+
+func (w *wrappedServerStream) RecvMsg(m any) error {
+  if err := w.ServerStream.RecvMsg(m); err != nil {
+    return err
+  }
+  msg, ok := m.(proto.Message)
+  if !ok {
+    return status.Errorf(codes.Internal, "unsupported message type: %T", m)
+  }
+  return w.validator.Validate(msg)
+}
+```
+
+如上，我们包装了一个`wrappedServerStream`结构体实现`grpc.ServerStream`接口。同时重写其`RecvMsg()`方法，添加参数验证功能。
+
 ### 客户端流式rpc拦截器
+
+客户端流式 RPC 的核心是发送多条消息，校验逻辑通常在消息构造时已完成，因此 SendMsg 拦截器的使用频率低于服务端的 RecvMsg 拦截器。如下是一个数据脱敏的拦截器实现示例。和服务端类似，包装客户端流接口`grpc.ClientStream`并重写发送方法`SendMsg()`：
+
+```go
+func SanitizeStreamInterceptor() grpc.StreamClientInterceptor {
+  return func(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
+    clientStream, err := streamer(ctx, desc, cc, method, opts...)
+    if err != nil {
+      return nil, err
+    }
+    return &sanitizedClientStream{
+      ClientStream: clientStream,
+    }, nil
+  }
+}
+
+type sanitizedClientStream struct {
+  grpc.ClientStream
+}
+
+func (s *sanitizedClientStream) SendMsg(m any) error {
+  msg, ok := m.(proto.Message)
+  if !ok {
+    return status.Errorf(codes.Internal, "unsupported message type: %T", m)
+  }
+
+  switch v := msg.(type) {
+  case *commonv1.User:
+    v.RealName = sanitizeRealName(v.RealName)
+    v.Phone = sanitizePhone(v.Phone)
+    v.Email = sanitizeEmail(v.Email)
+  }
+
+  return s.ClientStream.SendMsg(msg)
+}
+
+// sanitizeRealName 保留首字母
+func sanitizeRealName(name string) string {
+  name = strings.TrimSpace(name)
+  if len(name) <= 1 {
+    return name
+  }
+
+  runes := []rune(name)
+  return string(runes[0]) + strings.Repeat("*", len(runes)-1)
+}
+
+// sanitizePhone 保留前3后4
+func sanitizePhone(phone string) string {
+  if len(phone) >= 7 {
+    return phone[:3] + "****" + phone[len(phone)-4:]
+  }
+  return "***"
+}
+
+// sanitizeEmail 保留首字母和域名
+func sanitizeEmail(email string) string {
+  parts := strings.Split(email, "@")
+  if len(parts) != 2 {
+    return email
+  }
+  local := parts[0]
+  if len(local) <= 1 {
+    return email
+  }
+  return local[:1] + "***@" + parts[1]
+}
+```
+
+我们注意到，和`grpc.StreamServerInterceptor`中直接操作`ServerStream`不同，`grpc.StreamClientInterceptor`需要先用`Streamer`创建`ClientStream`再操作该客户端流。这意味着我们可以在流被创建之前进行拦截，例如一个限流拦截器可以实现如下：
+
+```go
+func RateLimitStreamInterceptor(limiter *rate.Limiter) grpc.StreamClientInterceptor {
+    return func(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
+        // 在创建流之前检查是否超过限流
+        if !limiter.Allow() {
+            return nil, status.Errorf(codes.ResourceExhausted, "rate limit exceeded for method: %s", method)
+        }
+
+        // 限流通过，创建流
+        return streamer(ctx, desc, cc, method, opts...)
+    }
+}
+```
