@@ -1166,13 +1166,16 @@ timeline
 title gRPC校验方案演进史
 section 2017-2019 
 方案A：go-proto-validators
-: 早期方案，需生成代码<br>与 go-grpc-middleware 配合
+: 早期方案
+: 需生成代码，与 go-grpc-middleware 配合
 section 2019-2023 
 方案B：protoc-gen-validate (PGV)
-: 成为事实标准<br>规则更丰富，生成代码成熟
+: 成为事实标准
+: 规则更丰富，生成代码成熟
 section 2023-Now 
 方案C：protovalidate
-: Buf 官方推出<br>无代码生成，性能更强
+: Buf 官方推出
+: 无代码生成，性能更强
 ```
 
 - 方案A：`go-proto-validators` (较老，生态渐微)
