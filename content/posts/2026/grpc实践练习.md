@@ -49,31 +49,44 @@ protobuf有一套自己的包机制，和go混在一起容易混淆。搞清楚`
 ├── buf.yaml
 ├── cmd/
 │   ├── client/
+│   │   └── book/
 │   └── server/
 │       └── book/
 │           └── main.go
+├── config/
+│   └── config.yml
 ├── go.mod
 ├── go.sum
 └── internal/
     ├── client/
+    │   └── book/
+    │       └── client.go
+    ├── pkg/
+    │   └── config/
+    │       ├── config.go
+    │       └── viper.go
     └── server/
-        └── book/
-            ├── model/
-            │   ├── biz/
-            │   │   └── book.go
-            │   └── db/
-            │       └── book.go
-            ├── repo/
-            │   ├── book.go
-            │   └── converter.go
-            ├── server/
-            │   ├── di.go
-            │   └── server.go
-            ├── service/
-            │   ├── book.go
-            │   └── converter.go
-            └── usecase/
-                └── book.go
+        ├── book/
+        │   ├── model/
+        │   │   ├── biz/
+        │   │   │   └── book.go
+        │   │   └── db/
+        │   │       └── book.go
+        │   ├── repo/
+        │   │   ├── book.go
+        │   │   └── converter.go
+        │   ├── server/
+        │   │   ├── di.go
+        │   │   └── server.go
+        │   ├── service/
+        │   │   ├── book.go
+        │   │   └── converter.go
+        │   └── usecase/
+        │       └── book.go
+        └── common/
+            └── interceptor/
+                ├── initialize.go
+                └── validator.go
 ```
 
 ## buf
@@ -1212,7 +1225,7 @@ func (s *BookServer) Run(ctx context.Context) error {
   interceptor := func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
     msg, ok := req.(proto.Message)
     if !ok {
-      return status.Errorf(codes.Internal, "unsupported message type: %T", req)
+      return nil, status.Errorf(codes.Internal, "unsupported message type: %T", req)
     }
     if err := validator.Validate(msg); err != nil {
       return nil, status.Errorf(codes.InvalidArgument, "invalid request: %v", err)
@@ -1475,4 +1488,419 @@ func RateLimitStreamInterceptor(limiter *rate.Limiter) grpc.StreamClientIntercep
         return streamer(ctx, desc, cc, method, opts...)
     }
 }
+```
+
+## 日志
+
+### 日志功能实现
+
+尝试为服务端添加日志拦截器以监控每个grpc请求的情况。这里使用的是官方的`log/slog`日志库。也可以使用其他日志库，除了初始化部分在grpc内的用法都差不多。
+
+关于`slog`的具体用法在此不进行赘述，如下是最终的logger实现：
+
+```go
+// internal/pkg/logger/logger.go
+package logger
+
+import (
+  "bookstore/internal/pkg/config"
+  "io"
+  "log/slog"
+  "os"
+
+  "github.com/natefinch/lumberjack"
+)
+
+var defaultLogger *slog.Logger
+
+func InitLogger(cfg *config.Logging, logFile string) {
+  var level slog.Level
+  switch cfg.Level {
+  case "debug":
+    level = slog.LevelDebug
+  case "info":
+    level = slog.LevelInfo
+  case "warn":
+    level = slog.LevelWarn
+  case "error":
+    level = slog.LevelError
+  default:
+    level = slog.LevelDebug
+  }
+
+  var writer io.Writer
+  switch cfg.Output {
+  case "stdout":
+    writer = os.Stdout
+  case "file":
+    writer = &lumberjack.Logger{
+      Filename:   logFile,
+      MaxSize:    cfg.MaxSize,
+      MaxAge:     cfg.MaxAge,
+      MaxBackups: cfg.MaxBackups,
+      Compress:   cfg.Compress,
+      LocalTime:  cfg.LocalTime,
+    }
+  default:
+    writer = os.Stdout
+  }
+
+  var handler slog.Handler
+  options := &slog.HandlerOptions{
+    AddSource: cfg.AddSource,
+    Level:     level,
+  }
+
+  switch cfg.Format {
+  case "json":
+    handler = slog.NewJSONHandler(writer, options)
+  case "text":
+    handler = slog.NewTextHandler(writer, options)
+  default:
+    handler = slog.NewTextHandler(writer, options)
+  }
+
+  defaultLogger = slog.New(handler)
+  slog.SetDefault(defaultLogger)
+}
+
+func GetLogger() *slog.Logger {
+  return defaultLogger
+}
+
+func Debug(msg string, args ...any) { defaultLogger.Debug(msg, args...) }
+func Info(msg string, args ...any)  { defaultLogger.Info(msg, args...) }
+func Warn(msg string, args ...any)  { defaultLogger.Warn(msg, args...) }
+func Error(msg string, args ...any) { defaultLogger.Error(msg, args...) }
+```
+
+```go
+// internal/pkg/logger/context.go
+package logger
+
+import (
+    "context"
+    "log/slog"
+)
+
+type ctxKey struct{}
+
+// WithContext 将 logger 注入到 context 中
+func WithContext(ctx context.Context, logger *slog.Logger) context.Context {
+    return context.WithValue(ctx, ctxKey{}, logger)
+}
+
+// FromContext 从 context 中获取 logger，如果不存在则返回全局默认
+func FromContext(ctx context.Context) *slog.Logger {
+    if logger, ok := ctx.Value(ctxKey{}).(*slog.Logger); ok {
+        return logger
+    }
+    return defaultLogger
+}
+
+// 带 context 的日志方法（自动携带请求 ID 等信息）
+func DebugCtx(ctx context.Context, msg string, args ...any) {
+    FromContext(ctx).Debug(msg, args...)
+}
+
+func InfoCtx(ctx context.Context, msg string, args ...any) {
+    FromContext(ctx).Info(msg, args...)
+}
+
+func ErrorCtx(ctx context.Context, msg string, args ...any) {
+    FromContext(ctx).Error(msg, args...)
+}
+```
+
+#### 关于logger注入context
+
+在`context.go`中，选择将携带参数的logger注入上下文，方便实现请求级参数隔离，可用于链路追踪等。相比将相关参数放入上下文再在每次打印时取出参数进行组装，这样做可以减少重复劳动，降低出错的可能性。
+
+**总结**：传递 Logger 而非传递参数，是将“能力”注入 Context，实现了一次组装、随处使用，避免了手动传递参数的遗漏风险。
+
+### 日志拦截器实现
+
+#### 手动实现日志拦截器
+
+```go
+func LoggingUnaryInterceptor() grpc.UnaryServerInterceptor {
+  return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+    start := time.Now()
+
+    l := logger.GetLogger().With(slog.String("method", info.FullMethod))
+    ctx = logger.WithContext(ctx, l)
+
+    resp, err := handler(ctx, req)
+
+    duration := time.Since(start)
+    statusCode := status.Code(err)
+
+    l.Info("request handled",
+      "duration", duration.Milliseconds(),
+      "status_code", statusCode.String(),
+      "error", err,
+    )
+
+    if l.Enabled(ctx, slog.LevelDebug) {
+      l.Debug("request details",
+        "request", req,
+        "response", resp,
+      )
+    }
+
+    return resp, err
+  }
+}
+
+func LoggingStreamInterceptor() grpc.StreamServerInterceptor {
+  return func(srv any, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+    start := time.Now()
+
+    l := logger.GetLogger().With(slog.String("method", info.FullMethod))
+
+    wrappedStream := &loggedServerStream{
+      ServerStream: stream,
+      logger:       l,
+    }
+
+    err := handler(srv, wrappedStream)
+
+    duration := time.Since(start)
+    statusCode := status.Code(err)
+
+    l.Info("request handled",
+      "duration", duration.Milliseconds(),
+      "status_code", statusCode.String(),
+      "error", err,
+      "recv_count", wrappedStream.recvCount,
+      "send_count", wrappedStream.sendCount,
+    )
+
+    return err
+  }
+}
+
+type loggedServerStream struct {
+  grpc.ServerStream
+  logger *slog.Logger
+  recvCount int
+    sendCount int
+}
+
+func (s *loggedServerStream) RecvMsg(m any) error {
+  err := s.ServerStream.RecvMsg(m)
+  if err == nil {
+    s.recvCount++
+    s.logger.Debug("received message", 
+    "count", s.recvCount,
+    "message", m,
+  )
+  }
+  return err
+}
+
+func (s *loggedServerStream) SendMsg(m any) error {
+  err := s.ServerStream.SendMsg(m)
+  if err == nil {
+    s.sendCount++
+    s.logger.Debug("sent message",
+      "count", s.sendCount,
+      "message", m,
+    )
+  }
+  return err
+}
+
+func (s *loggedServerStream) Context() context.Context {
+  ctx := s.ServerStream.Context()
+  if ctx == nil {
+    ctx = context.Background()
+  }
+
+  return logger.WithContext(ctx, s.logger)
+}
+```
+
+如上是手动实现的日志拦截器。可以在`handler()`前后收集信息并打印，也可以在stream重写的`RecvMsg()`和`SendMsg()`方法中进行打印。如上示例打印了请求用时和输入输出的日志。
+
+#### 使用go-grpc-middleware的logging包
+
+除了手动实现，也可以直接使用`go-grpc-middleware`提供的日志中间件：
+
+```go
+var (
+  interceptorLogger *slog.Logger
+)
+
+func InitLoggingInterceptor() error {
+  interceptorLogger = logger.GetLogger()
+  return nil
+}
+
+// InterceptorLogger 将 slog.Logger 适配为 logging.Logger 接口
+func InterceptorLogger() logging.Logger {
+  return logging.LoggerFunc(func(ctx context.Context, lvl logging.Level, msg string, fields ...any) {
+    // logging.Level 与 slog.Level 数值对齐，可直接转换
+    interceptorLogger.Log(ctx, slog.Level(lvl), msg, fields...)
+  })
+}
+
+func LoggingUnaryInterceptor(opts ...logging.Option) grpc.UnaryServerInterceptor {
+  return logging.UnaryServerInterceptor(InterceptorLogger(), opts...)
+}
+
+func LoggingStreamInterceptor(opts ...logging.Option) grpc.StreamServerInterceptor {
+  return logging.StreamServerInterceptor(InterceptorLogger(), opts...)
+}
+
+```
+
+##### logging.Option配置详解
+
+- `WithLogOnEvents` - 配置记录哪些事件
+
+  ```go
+  // 只记录调用开始和结束（默认）
+  logging.WithLogOnEvents(logging.StartCall, logging.FinishCall)
+
+  // 记录所有事件（包括 payload，非常详细）
+  logging.WithLogOnEvents(
+      logging.StartCall,
+      logging.FinishCall,
+      logging.PayloadReceived,
+      logging.PayloadSent,
+  )
+
+  // 只记录调用结束（适合生产环境）
+  logging.WithLogOnEvents(logging.FinishCall)
+  ```
+  
+- `WithLevels` - 自定义状态码到日志级别的映射
+
+  ```go
+  logging.WithLevels(func(code codes.Code) logging.Level {
+      switch code {
+      case codes.OK:
+          return logging.LevelInfo
+      case codes.Canceled:
+          return logging.LevelWarn
+      case codes.Unknown, codes.Internal, codes.Unavailable:
+          return logging.LevelError
+      default:
+          return logging.LevelInfo
+      }
+  })
+  ```
+
+  服务端和客户端的默认映射不同：
+  - **服务端默认**：`OK`/`NotFound`/`Canceled` → `Info`；`DeadlineExceeded`/`Unavailable` → `Warn`；`Internal`/`Unknown` → `Error`
+  - **客户端默认**：`OK`/`Canceled` → `Debug`；`Unknown`/`DeadlineExceeded` → `Info`；`Internal`/`Unavailable` → `Warn`
+
+- `WithDurationField` - 自定义耗时字段格式
+
+  ```go
+  // 默认：{"grpc.time_ms": "12.345"}
+  logging.WithDurationField(logging.DurationToTimeMillisFields)
+
+  // 使用 duration 字符串：{"grpc.duration": "12.345ms"}
+  logging.WithDurationField(logging.DurationToDurationField)
+
+  // 自定义：{"duration_ms": 12345}
+  logging.WithDurationField(func(duration time.Duration) logging.Fields {
+      return logging.Fields{"duration_ms", duration.Milliseconds()}
+  })
+  ```
+
+- `WithErrorFields` - 从错误中提取额外字段
+
+  ```go
+  logging.WithErrorFields(func(err error) logging.Fields {
+      // 假设你的错误类型包含额外信息
+      if customErr, ok := err.(interface{ Code() int }); ok {
+          return logging.Fields{"error_code", customErr.Code()}
+      }
+      return nil
+  })
+  ```
+
+- `WithCodes` - 自定义错误到状态码的映射
+
+  ```go
+  logging.WithCodes(func(err error) codes.Code {
+      if err == nil {
+          return codes.OK
+      }
+      // 自定义错误类型
+      if customErr, ok := err.(interface{ GRPCStatus() *status.Status }); ok {
+          return customErr.GRPCStatus().Code()
+      }
+      return codes.Unknown
+  })
+  ```
+
+- `WithFieldsFromContext` - 从 Context 提取字段
+
+  ```go
+  // 从 context 中提取 trace_id、user_id 等
+  logging.WithFieldsFromContext(func(ctx context.Context) logging.Fields {
+      fields := logging.Fields{}
+      if traceID := ctx.Value("trace_id"); traceID != nil {
+          fields = append(fields, "trace_id", traceID)
+      }
+      if userID := ctx.Value("user_id"); userID != nil {
+          fields = append(fields, "user_id", userID)
+      }
+      return fields
+  })
+  ```
+
+- `WithFieldsFromContextAndCallMeta` - 从 Context 和调用元数据提取字段
+
+  ```go
+  logging.WithFieldsFromContextAndCallMeta(func(ctx context.Context, c interceptors.CallMeta) logging.Fields {
+      return logging.Fields{
+          "method_type", string(c.Typ),
+          "service", c.Service,
+          "method", c.Method,
+      }
+  })
+  ```
+
+- `WithTimestampFormat` - 自定义时间戳格式
+
+  ```go
+  logging.WithTimestampFormat(time.RFC3339Nano)  // 纳秒精度
+  ```
+
+- `WithDisableLoggingFields` - 禁用默认的 gRPC 字段
+
+  默认会记录：`protocol`、`grpc.component`、`grpc.service`、`grpc.method`、`grpc.method_type`
+
+  ```go
+  // 禁用 method 和 method_type 字段
+  logging.WithDisableLoggingFields(
+      logging.MethodFieldKey,
+      logging.MethodTypeFieldKey,
+  )
+  ```
+
+##### Context字段传递
+
+`logging`包也提供了在Context中传递日志字段的机制。可以通过`logging.InjectLogField()`将字段注入上下文，在后续日志中自动打印。也可以使用`logging.ExtractFields()`从上下文中提取注入的字段。
+
+```go
+import "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
+
+// 在业务代码中添加字段
+func (s *BookService) GetBook(ctx context.Context, req *pb.GetBookRequest) (*pb.GetBookResponse, error) {
+    // 添加请求特定的字段
+    ctx = logging.InjectLogField(ctx, "book_id", req.Id)
+    ctx = logging.InjectLogField(ctx, "user_id", getUserID(ctx))
+    
+    // 这些字段会自动出现在后续的日志中
+    // ...
+}
+
+// 提取当前 context 中的字段（用于自己的日志）
+fields := logging.ExtractFields(ctx)
 ```
