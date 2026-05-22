@@ -24,6 +24,7 @@ hiddenFromSearch: false
 - [protovalidate](https://protovalidate.com/about/)
 - [CEL by Example](https://celbyexample.com/)
 - [go-grpc-middleware](https://github.com/grpc-ecosystem/go-grpc-middleware)
+- [OpenTelemetry](https://opentelemetry.io/zh/)
 - [grpc-gateway](https://github.com/grpc-ecosystem/grpc-gateway)
 
 grpc相关的内容都十分繁琐，虽然看还是能看懂但自己写就抓瞎了。所以做一个项目边练边学尝试融会贯通所学内容。
@@ -1630,7 +1631,7 @@ func LoggingUnaryInterceptor() grpc.UnaryServerInterceptor {
   return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
     start := time.Now()
 
-    l := logger.GetLogger().With(slog.String("method", info.FullMethod))
+    l := logger.FromContext(ctx).With(slog.String("method", info.FullMethod))
     ctx = logger.WithContext(ctx, l)
 
     resp, err := handler(ctx, req)
@@ -1659,7 +1660,7 @@ func LoggingStreamInterceptor() grpc.StreamServerInterceptor {
   return func(srv any, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
     start := time.Now()
 
-    l := logger.GetLogger().With(slog.String("method", info.FullMethod))
+    l := logger.FromContext(ctx).With(slog.String("method", info.FullMethod))
 
     wrappedStream := &loggedServerStream{
       ServerStream: stream,
@@ -1907,3 +1908,206 @@ func (s *BookService) GetBook(ctx context.Context, req *pb.GetBookRequest) (*pb.
 // 提取当前 context 中的字段（用于自己的日志）
 fields := logging.ExtractFields(ctx)
 ```
+
+## 可观测性
+
+可观测性是一个比较庞杂的概念。包括**链路追踪（Trace）**，**指标（Metrics）**和**日志（Log）**等。我们通过将[OpenTelemetry](https://opentelemetry.io/)这个开源的可观测性框架集成到grpc中来实现可观测性。这里不展开讲解`OpenTelemetry`本身，详情可以查看[文档](https://opentelemetry.io/zh/docs/what-is-opentelemetry/)。
+
+### otel初始化
+
+OpenTelemetry Go 的日志组件仍处于Beta阶段[refer](https://opentelemetry.io/docs/languages/go/)，而且我们之前已经实现了一套日志功能，所以这里我们主要实现链路追踪和指标功能。大致流程为初始化resource和exporter，用两者初始化provider并设置为全局变量。
+
+| 组件 | 作用 | 类比 |
+| :--- | :--- | :--- |
+| **Resource** | 标识服务的元信息（名称、版本、环境） | 快递单上的寄件人信息 |
+| **Exporter** | 决定数据发送到哪里（OTLP、Jaeger、stdout） | 快递公司 |
+| **Provider** | 管理遥测数据的生命周期和配置 | 快递网点 |
+
+如下只是一个实现示例，具体各项指标需要根据项目实际情况进行自定义。
+
+```go
+// internal/pkg/otel/otel.go
+package otel
+
+import (
+  "bookstore/internal/pkg/config"
+  "context"
+  "fmt"
+
+  "go.opentelemetry.io/otel"
+  "go.opentelemetry.io/otel/attribute"
+  "go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
+  "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+  "go.opentelemetry.io/otel/sdk/metric"
+  "go.opentelemetry.io/otel/sdk/resource"
+  "go.opentelemetry.io/otel/sdk/trace"
+  semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
+)
+
+func InitOtel(ctx context.Context, cfg *config.Otel, srvName string, srvVersion string, env string) (func(context.Context) error, error) {
+  // 创建资源
+  res, err := initResource(ctx, srvName, srvVersion, env)
+  if err != nil {
+    return nil, fmt.Errorf("failed to create resource: %w", err)
+  }
+
+  // 创建TracerProvider
+  tracerProvider, err := initTracerProvider(ctx, cfg, res)
+  if err != nil {
+    return nil, fmt.Errorf("failed to create tracer provider: %w", err)
+  }
+
+  // 创建MeterProvider
+  meterProvider, err := initMeterProvider(ctx, cfg, res)
+  if err != nil {
+    if tracerErr := tracerProvider.Shutdown(ctx); tracerErr != nil {
+      return nil, errors.Join(
+        fmt.Errorf("failed to create meter provider: %w", err),
+        fmt.Errorf("failed to shutdown tracer provider: %w", tracerErr),
+      )
+    }
+    return nil, fmt.Errorf("failed to create meter provider: %w", err)
+  }
+  otel.SetTracerProvider(tracerProvider)
+  otel.SetMeterProvider(meterProvider)
+
+  return func(ctx context.Context) error {
+    errs := make([]error, 0)
+    tracerErr := tracerProvider.Shutdown(ctx)
+    if tracerErr != nil {
+      errs = append(errs, fmt.Errorf("failed to shutdown tracer provider: %w", tracerErr))
+    }
+    meterErr := meterProvider.Shutdown(ctx)
+    if meterErr != nil {
+      errs = append(errs, fmt.Errorf("failed to shutdown meter provider: %w", meterErr))
+    }
+    if len(errs) > 0 {
+      return errors.Join(errs...)
+    }
+    return nil
+  }, nil
+}
+
+// 创建资源
+func initResource(ctx context.Context, srvName string, srvVersion string, env string) (*resource.Resource, error) {
+  res, err := resource.New(ctx,
+    resource.WithAttributes(
+      semconv.ServiceNameKey.String(srvName),
+      semconv.ServiceVersionKey.String(srvVersion),
+      attribute.String("deployment.environment", env),
+    ),
+    resource.WithProcess(), // 添加进程信息（PID、可执行文件路径等）
+    resource.WithOS(),      // 添加操作系统信息
+    resource.WithHost(),    // 添加主机名
+  )
+  if err != nil {
+    return nil, fmt.Errorf("failed to create resource: %w", err)
+  }
+  return resource.Merge(resource.Default(), res)
+}
+
+// 创建TracerProvider
+func initTracerProvider(ctx context.Context, cfg *config.Otel, res *resource.Resource) (*trace.TracerProvider, error) {
+  opts := []otlptracegrpc.Option{
+    otlptracegrpc.WithEndpoint(cfg.OtelEndpoint),
+    otlptracegrpc.WithTimeout(cfg.ExportTimeout),
+  }
+  if cfg.Insecure {
+    opts = append(opts, otlptracegrpc.WithInsecure())
+  }
+  
+  exporter, err := otlptracegrpc.New(ctx, opts...)
+  if err != nil {
+    return nil, fmt.Errorf("failed to create OTLP trace exporter: %w", err)
+  }
+
+  provider := trace.NewTracerProvider(
+    // 设置导出器
+    trace.WithBatcher(exporter,
+      trace.WithBatchTimeout(cfg.BatchTimeout),
+    ),
+    // 设置资源
+    trace.WithResource(res),
+    // 设置采样器
+    trace.WithSampler(trace.TraceIDRatioBased(cfg.TraceSampleRate)),
+  )
+  return provider, nil
+}
+
+// 创建MeterProvider
+func initMeterProvider(ctx context.Context, cfg *config.Otel, res *resource.Resource) (*metric.MeterProvider, error) {
+  opts := []otlpmetricgrpc.Option{
+    otlpmetricgrpc.WithEndpoint(cfg.OtelEndpoint),
+    otlpmetricgrpc.WithTimeout(cfg.ExportTimeout),
+  }
+  if cfg.Insecure {
+    opts = append(opts, otlpmetricgrpc.WithInsecure())
+  }
+  
+  exporter, err := otlpmetricgrpc.New(ctx, opts...)
+  if err != nil {
+    return nil, fmt.Errorf("failed to create OTLP metric exporter: %w", err)
+  }
+
+  provider := metric.NewMeterProvider(
+    // 设置导出器
+    metric.WithReader(metric.NewPeriodicReader(exporter,
+      metric.WithInterval(cfg.ExportInterval),
+    )),
+    // 设置资源
+    metric.WithResource(res),
+  )
+  return provider, nil
+}
+```
+
+### 集成otel到grpc
+
+要将初始化完成的otel集成到grpc中，最简单的方式就是使用`go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc`库进行仪表化。
+
+```go
+// internal/server/book/server/server.go
+import (
+  "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc" // new
+)
+type BookServer struct {
+  cfg         *config.Config
+  bookService *service.BookService
+}
+
+func NewBookServer(i do.Injector) (*BookServer, error) {
+  cfg := do.MustInvoke[*config.Config](i)
+  bookService := do.MustInvoke[*service.BookService](i)
+  return &BookServer{
+    cfg:         cfg,
+    bookService: bookService,
+  }, nil
+}
+
+func (s *BookServer) Run(ctx context.Context) error {
+  // ...
+
+  grpcServer := grpc.NewServer(
+    grpc.StatsHandler(otelgrpc.NewServerHandler()), // new
+    grpc.ChainUnaryInterceptor(
+      interceptor.ValidateUnaryInterceptor(),
+      interceptor.LoggingUnaryInterceptor(loggingOptions...),
+    ),
+    grpc.ChainStreamInterceptor(
+      interceptor.ValidateStreamInterceptor(),
+      interceptor.LoggingStreamInterceptor(loggingOptions...),
+    ),
+  )
+
+  // ...
+
+  return nil
+}
+```
+
+使用 `otelgrpc.NewServerHandler()` 后，它会自动为每个 RPC 调用：
+
+1. **解析追踪上下文**：从 gRPC Metadata 中读取 `traceparent`，实现链路串联
+2. **创建 Span**：自动生成 Server Span，记录开始/结束时间
+3. **记录 Metrics**：自动记录 `rpc.server.duration`、`rpc.server.request.size` 等指标
+4. **传播 Baggage**：如果客户端传递了业务属性，会自动放入 Context
