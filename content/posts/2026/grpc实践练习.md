@@ -29,6 +29,8 @@ hiddenFromSearch: false
 
 grpc相关的内容都十分繁琐，虽然看还是能看懂但自己写就抓瞎了。所以做一个项目边练边学尝试融会贯通所学内容。
 
+项目地址：[Jinvic/grpc-practice](https://github.com/Jinvic/grpc-practice)
+
 ## 项目结构
 
 项目结构没有什么最佳实践之类，按自己喜欢的来就行。
