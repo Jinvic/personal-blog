@@ -1,5 +1,5 @@
 ---
-title: Grpc实践练习
+title: gRPC实践练习
 date: '2026-03-31T10:34:13+08:00'
 tags: 
 - Go
@@ -11,7 +11,7 @@ hiddenFromHomePage: false
 hiddenFromSearch: false
 ---
 
-# Grpc实践练习
+# gRPC实践练习
 
 参考：
 
