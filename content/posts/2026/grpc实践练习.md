@@ -6,7 +6,7 @@ tags:
 - Protobuf
 categories:
 - 开发 
-draft: true
+draft: false
 hiddenFromHomePage: false
 hiddenFromSearch: false
 ---
@@ -58,36 +58,47 @@ protobuf有一套自己的包机制，和go混在一起容易混淆。搞清楚`
 │   └── config.yml
 ├── go.mod
 ├── go.sum
-└── internal/
-    ├── client/
-    │   └── book/
-    │       └── client.go
-    ├── pkg/
-    │   └── config/
-    │       ├── config.go
-    │       └── viper.go
-    └── server/
-        ├── book/
-        │   ├── model/
-        │   │   ├── biz/
-        │   │   │   └── book.go
-        │   │   └── db/
-        │   │       └── book.go
-        │   ├── repo/
-        │   │   ├── book.go
-        │   │   └── converter.go
-        │   ├── server/
-        │   │   ├── di.go
-        │   │   └── server.go
-        │   ├── service/
-        │   │   ├── book.go
-        │   │   └── converter.go
-        │   └── usecase/
-        │       └── book.go
-        └── common/
-            └── interceptor/
-                ├── initialize.go
-                └── validator.go
+├── internal/
+│   ├── client/
+│   │   └── book/
+│   │       └── client.go
+│   ├── pkg/
+│   │   ├── config/
+│   │   │   ├── config.go
+│   │   │   └── viper.go
+│   │   ├── database/
+│   │   │   └── gorm.go
+│   │   ├── logger/
+│   │   │   ├── context.go
+│   │   │   └── logger.go
+│   │   └── otel/
+│   │       └── otel.go
+│   └── server/
+│       ├── book/
+│       │   ├── model/
+│       │   │   ├── biz/
+│       │   │   │   └── book.go
+│       │   │   └── db/
+│       │   │       └── book.go
+│       │   ├── repo/
+│       │   │   ├── book.go
+│       │   │   └── converter.go
+│       │   ├── server/
+│       │   │   ├── di.go
+│       │   │   └── server.go
+│       │   ├── service/
+│       │   │   ├── book.go
+│       │   │   └── converter.go
+│       │   └── usecase/
+│       │       └── book.go
+│       └── common/
+│           └── interceptor/
+│               ├── initialize.go
+│               ├── logger.go
+│               └── validator.go
+└── util/
+    └── file/
+        └── file.go
 ```
 
 ## buf
@@ -117,7 +128,7 @@ modules:
   - path: api
 ```
 
-另两个选项分别为`lint`和`breaking`分别用于设置**静态代码分析策略**和**破坏性更改检测规则**，保持默认就行。详细配置可以参考[文档](https://buf.build/docs/configuration/v2/buf-yaml).可以分别使用`buf lint`命令和`buf breaking`命令来进行代码检查和破坏性变更检测。
+另两个选项分别为`lint`和`breaking`分别用于设置**静态代码分析策略**和**破坏性更改检测规则**，保持默认就行。详细配置可以参考[文档](https://buf.build/docs/configuration/v2/buf-yaml)。可以分别使用`buf lint`命令和`buf breaking`命令来进行代码检查和破坏性变更检测。
 
 配置完成后可以使用`buf build`检查是否有问题。
 
@@ -1732,6 +1743,8 @@ func (s *loggedServerStream) Context() context.Context {
 除了手动实现，也可以直接使用`go-grpc-middleware`提供的日志中间件：
 
 ```go
+import "github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
+
 var (
   interceptorLogger *slog.Logger
 )
@@ -2210,7 +2223,7 @@ type BookService struct {
 }
 ```
 
-实现http网关逻辑。初始化`grpc-gateway`的路由器mux用于将HTTP请求映射到gRPC方法，将其注册到grpc服务中。然后启动一个http服务器接受http请求给mux处理。
+然后实现http网关逻辑。初始化`grpc-gateway`的路由器mux用于将HTTP请求映射到gRPC方法，将其注册到grpc服务中，再启动一个http服务器接受http请求给mux处理。
 
 ```mermaid
 flowchart LR
@@ -2220,7 +2233,7 @@ flowchart LR
     
     subgraph Gateway[HTTP Gateway]
         Router[mux Router<br/>协议转换]
-        GRPCClient[gRPC Client<br/>localhost:9090]
+        GRPCClient[gRPC Client<br/>处理调用]
     end
     
     subgraph Backend[gRPC Backend]
