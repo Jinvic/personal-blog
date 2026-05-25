@@ -2111,3 +2111,190 @@ func (s *BookServer) Run(ctx context.Context) error {
 2. **创建 Span**：自动生成 Server Span，记录开始/结束时间
 3. **记录 Metrics**：自动记录 `rpc.server.duration`、`rpc.server.request.size` 等指标
 4. **传播 Baggage**：如果客户端传递了业务属性，会自动放入 Context
+
+## RESTful API
+
+我们可以使用[grpc-gateway](https://github.com/grpc-ecosystem/grpc-gateway)这个插件将RESTful HTTP API转换为gRPC，从而可以使用http请求访问gprc服务。
+
+首先在`buf.gen.yaml`中添加插件：
+
+```yml
+plugins:
+  - remote: buf.build/protocolbuffers/go
+    out: api
+    opt:
+      - paths=source_relative
+  - remote: buf.build/grpc/go
+    out: api
+    opt:
+      - paths=source_relative
+  - remote: buf.build/grpc-ecosystem/gateway # new
+    out: api
+    opt:
+      - paths=source_relative
+```
+
+然后在`buf.yaml`中添加依赖，并执行`buf dep update`更新依赖：
+
+```yml
+version: v2
+modules:
+  - path: api
+deps:
+  - buf.build/bufbuild/protovalidate
+  - buf.build/googleapis/googleapis # new
+lint:
+  use:
+    - STANDARD
+breaking:
+  use:
+    - FILE
+```
+
+在proto文件中引入`google/api/annotations.proto`依赖，就可以编辑http路由规则了：
+
+```protobuf
+import "google/api/annotations.proto";
+
+service BookService {
+  rpc GetBook(GetBookRequest) returns (GetBookResponse) {
+    option (google.api.http) = {get: "/v1/books/{id}"};
+  }
+  rpc CreateBook(CreateBookRequest) returns (CreateBookResponse) {
+    option (google.api.http) = {
+      post: "/v1/books"
+      body: "*"
+    };
+  }
+  rpc ListBooks(ListBooksRequest) returns (ListBooksResponse) {
+    option (google.api.http) = {get: "/v1/books"};
+  }
+  rpc UpdateBook(UpdateBookRequest) returns (UpdateBookResponse) {
+    option (google.api.http) = {
+      put: "/v1/books/{book.id}"
+      body: "*"
+    };
+  }
+  rpc DeleteBook(DeleteBookRequest) returns (DeleteBookResponse) {
+    option (google.api.http) = {delete: "/v1/books/{id}"};
+  }
+  rpc BatchImportBooks(stream BatchImportBooksRequest) returns (BatchImportBooksResponse) {}
+  rpc BatchExportBooks(BatchExportBooksRequest) returns (stream BatchExportBooksResponse) {}
+  rpc HeartBeat(stream HeartBeatRequest) returns (stream HeartBeatResponse) {}
+}
+```
+
+需要注意的是，HTTP请求和gRPC流式方法的兼容性：
+
+| RPC 类型 | HTTP Gateway 支持 | 说明 |
+| --------- | ------------------ | ------ |
+| 普通 Unary RPC | ✅ 完全支持 | 请求-响应模式，完美转换 |
+| 服务端流式 (Server Streaming) | ⚠️ 有限支持 | 转换为 Server-Sent Events (SSE)，客户端需要特殊处理 |
+| 客户端流式 (Client Streaming) | ❌ 不支持 | HTTP/1.1 无法表示客户端流 |
+| 双向流式 (Bidirectional Streaming) | ❌ 不支持 | 无法通过 HTTP/1.1 实现 |
+
+因此对于 `BatchImportBooks`（客户端流）、`HeartBeat`（双向流）等流式方法，不建议添加 HTTP 映射。
+
+protobuf相关配置完成，接下来我们集成到go程序中，为grpc服务添加http网关。首先添加http网关的相关配置：
+
+```go
+// internal/pkg/config/config.go
+type BookService struct {
+  Name       string `mapstructure:"name"`    // 服务名称（必填）
+  Version    string `mapstructure:"version"` // 服务版本
+  Host       string `mapstructure:"host"`
+  Port       int    `mapstructure:"port"`
+  LogFile    string `mapstructure:"log_file"`
+  HTTPPort   int    `mapstructure:"http_port"`   // new
+  EnableHTTP bool   `mapstructure:"enable_http"` // new
+}
+```
+
+实现http网关逻辑。初始化`grpc-gateway`的路由器mux用于将HTTP请求映射到gRPC方法，将其注册到grpc服务中。然后启动一个http服务器接受http请求给mux处理。
+
+```mermaid
+flowchart LR
+    subgraph External[外部]
+        Client[HTTP Client<br/>JSON]
+    end
+    
+    subgraph Gateway[HTTP Gateway]
+        Router[mux Router<br/>协议转换]
+        GRPCClient[gRPC Client<br/>localhost:9090]
+    end
+    
+    subgraph Backend[gRPC Backend]
+        Service[gRPC Service<br/>业务逻辑]
+    end
+    
+    Client -->|HTTP Request<br/>JSON| Router
+    Router -->|转发调用| GRPCClient
+    GRPCClient -->|gRPC Call<br/>Protobuf| Service
+    Service -->|gRPC Response<br/>Protobuf| GRPCClient
+    GRPCClient -->|返回响应| Router
+    Router -->|HTTP Response<br/>JSON| Client
+    
+    style Router fill:#e1f5fe
+    style GRPCClient fill:#f3e5f5
+    style Service fill:#e8f5e9
+```
+
+```go
+import "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+
+func (s *BookServer) runHTTPGateway(ctx context.Context) error {
+  mux := runtime.NewServeMux()
+  opts := []grpc.DialOption{
+    grpc.WithTransportCredentials(insecure.NewCredentials()),
+  }
+  grpcEndpoint := fmt.Sprintf("localhost:%d", s.cfg.Services.Book.Port)
+  err := bookv1.RegisterBookServiceHandlerFromEndpoint(ctx, mux, grpcEndpoint, opts)
+  if err != nil {
+    return err
+  }
+
+  httpAddr := fmt.Sprintf(":%d", s.cfg.Services.Book.HTTPPort)
+  httpServer := &http.Server{
+    Addr:    httpAddr,
+    Handler: mux,
+  }
+
+  go func() {
+    <-ctx.Done()
+    log.Println("shutting down http gateway...")
+    shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+    if err := httpServer.Shutdown(shutdownCtx); err != nil {
+      log.Printf("failed to shutdown http gateway: %v", err)
+    }
+  }()
+
+  log.Printf("http gateway listening at port %d", s.cfg.Services.Book.HTTPPort)
+  if err := httpServer.ListenAndServe(); err != nil {
+    if err == http.ErrServerClosed {
+      log.Println("http gateway closed")
+      return nil
+    }
+    return fmt.Errorf("failed to serve http gateway: %w", err)
+  }
+  return nil
+}
+```
+
+最后将启动http网关集成到启动grpc服务的流程中。注意http网关应该在grpc服务之后启动，所以我这里简单加了个`time.Sleep()`。
+
+```go
+func (s *BookServer) Run(ctx context.Context) error {
+  if s.cfg.Services.Book.EnableHTTP {
+    go func() {
+      time.Sleep(1 * time.Second) // wait for grpc server to start
+      if err := s.runHTTPGateway(ctx); err != nil {
+        log.Printf("failed to run http gateway: %v", err)
+      }
+    }()
+  }
+
+  ...
+
+}
+```
