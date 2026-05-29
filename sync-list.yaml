@@ -36,3 +36,5 @@ notes:
       - "static/post-images/《Go语言高级编程》阅读笔记/"
   - source: "content/posts/2025/《SQL必知必会》阅读笔记.md"
     target_dir: "《SQL必知必会》阅读笔记"
+  - source: "content/posts/2026/《代码整洁之道》阅读笔记.md"
+    target_dir: "《代码整洁之道》阅读笔记"
