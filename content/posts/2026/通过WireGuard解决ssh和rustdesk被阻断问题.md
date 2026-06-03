@@ -1,5 +1,5 @@
 ---
-title: 通过WireGuard解决ssh和rustdesk被阻断问题
+title: 通过WireGuard解决ssh和RustDesk被阻断问题
 date: '2026-06-03T09:11:17+08:00'
 tags: 
 - Linux
