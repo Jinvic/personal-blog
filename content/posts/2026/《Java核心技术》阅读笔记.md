@@ -313,7 +313,7 @@ String label = switch(itemSize)
 
 #### 3.5.10 位运算符
 
-位运算符包括：`&`("and") `|`("or") `^`(“xor”) `~`(“not")。以及`>>`和`<<`运算符可以将位模式左移或右移。最后，`>>>`运算符会用0填充高位，这与`>>`不同，`>>`会用符号位填充高位。不存在`<<<`运算符。
+位运算符包括：`&`(and) `|`(or) `^`(xor) `~`(not)。以及`>>`和`<<`运算符可以将位模式左移或右移。最后，`>>>`运算符会用0填充高位，这与`>>`不同，`>>`会用符号位填充高位。不存在`<<<`运算符。
 
 位运算个人用的很少不是很了解，甚至都想不出什么合适的例子。
 
@@ -826,4 +826,769 @@ int[][] magicSquare =
 
 大意就是，对于多维数组，其元素是Arrays类，但不指定其长度，所以同一层级的Arrays可以拥有不同的长度。
 
+## 第四章 对象与类
+
+### 4.1 面向对象程序设计概述
+
+本节主要介绍**面向对象程序设计(Object-Oriented Programming, OOP)**。
+
+#### 4.1.1 类
+
+**类（class）**指定了如何构造对象。由一个类**构造（construct）**对象的过程称为创建这个类的一个**实例（instance）**。
+
+**封装（encapsulation，有时称为信息隐藏）**是处理对象的一个重要概念。从形式上看，封装就是将数据和行为组合在一个包中，并对对象的使用者隐藏具体的实现细节。对象中的数据称为**实例字段（instance field）**，操作数据的过程称为**方法（method）**。作为一个类的实例，一个特定对象有一组特定的实例字段值。这些值的集合就是这个对象的当前**状态（state）**。只要在对象上调用一个方法，它的状态就有可能发生改变。
+
+可以通过扩展其他类来构建新类。扩展一个已有的类时，这个新类具有被扩展的那个类的全部属性和方法。你只需要在新类中提供适用于这个新类的新方法和实例字段。通过扩展一个类来得到另外一个类的概念称为**继承（inheritance）**。
+
+#### 4.1.2 对象
+
+对象的三个主要特性：
+
+- 对象的**行为（behavior）**——可以对这个对象做哪些操作，或者可以对这个对象应用哪些方法?
+- 对象的**状态（state）**——调用那些方法时，对象会如何响应?
+- 对象的**标识（identity）**——如何区分可能有相同行为和状态的不同对象?
+
+#### 4.1.3 识别类
+
+识别类的一个简单经验是在分析问题的过程中寻找名词，而方法对应动词。
+
+#### 4.1.4 类之间的关系
+
+- **依赖（ependence，“uses-a”）**
+    如果一个类的方法要使用或操作另一个类的对象，我们就说前一个类依赖于后一个类。
+    应当尽可能减少相互依赖的类，即尽可能减少类之间的耦合（coupling）。
+- **聚合（aggregation，“has-a”）**
+    包含关系意味着类A的对象包含类B的对象。
+- **继承（inheritance，“is-a”）**
+  表示一个更特殊的类与一个更一般的类之间的关系。
+
+### 4.2 使用预定义类
+
+#### 4.2.1 对象与对象变量
+
+要想使用对象，首先必须构造对象，并指定其初始状态。然后对对象应用方法。
+
+在Java程序设计语言中，要使用**构造器（constructor，或称构造函数）**构造新实例。构造器是一种特殊的方法，其作用是构造并初始化对象。
+
+要认识到重要的一点：对象变量并不实际包含一个对象，它只是引用一个对象。在Java中，任何对象变量的值都是一个引用，指向存储在另外一个地方的某个对象。new操作符的返回值也是一个引用。可以显式地将对象变量设置为null，指示这个对象变量目前没有引用任何对象。
+
+简单地说，Java中的对象变量类似于C++中的对象指针。
+
+```java
+Date rightNow; // java
+```
+
+```C++
+Date* rightnow // C++
+```
+
+#### 4.2.2 Java类库中的LocalDate类
+
+介绍通过静态工厂方法（factory method）构造LocalDate类对象。
+
+```java
+LocalDate now = LocalDate.now() // 当前日期
+
+LocalDate newYearEve = LocalDate.of(1999, 12, 31) // 指定日期 
+
+// 获取年月日
+int year = newYearsEve.getYear(); // 1999
+int month = newYearsEve.getMonthValue(); // 12
+int day = newYearsEve.getDayOfMonth(); //31
+
+// 日期计算
+LocalDate aThousandDaysLater = newYearsEve.plusDays(1000);
+year = aThousandDaysLater.getYear();// 2002
+month = aThousandDaysLater.getMonthValue(); //09
+day = aThousandDaysLater.getDayOfMonth(); // 26
+```
+
+#### 4.2.3 更改器方法与访问器方法
+
+LocaLDate.plusDays将生成一个新的LocalDate对象，原来的对象没有**更改（mutate）**。
+
+调用后对象的状态会改变的方法称为个**更改器方法（mutator method）**。
+
+只访问对象而不修改对象的方法称为**访问器方法（accessor method）**。
+
+一个打印日历的实践练习，主要使用的各种getter方法：
+
+```java
+import java.time.LocalDate;
+
+public class Main {
+    public static void main(String[] args) {
+
+        String[] header = new String[] { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
+        for (int i = 0; i < header.length; i++) {
+            System.out.printf("%s\t", header[i]);
+        }
+        System.out.println();
+
+        LocalDate now = LocalDate.now();
+        int month = now.getMonthValue();
+        int today = now.getDayOfMonth();
+
+        LocalDate date = now.minusDays(today - 1);
+        int weekday = date.getDayOfWeek().getValue();
+        for (int i = 1; i < weekday; i++) {
+            System.out.printf("\t");
+        }
+
+        while (date.getMonthValue() == month) {
+            weekday = date.getDayOfWeek().getValue();
+            int day = date.getDayOfMonth();
+            String format = (day == today) ? "%d*\t" : "%d\t";
+            System.out.printf(format, day);
+            if (weekday == 7)
+                System.out.println();
+
+            date = date.plusDays(1);
+        }
+    }
+}
+
+/*
+> java .\Main.java # 2026-06-11
+Mon     Tue     Wed     Thu     Fri     Sat     Sun
+1       2       3       4       5       6       7
+8       9       10      11*     12      13      14
+15      16      17      18      19      20      21
+22      23      24      25      26      27      28
+29      30
+*/
+```
+
+### 4.3 自定义类
+
+#### 4.3.1 Employee类
+
+在Java中，最简单的类定义形式为：
+
+```txt
+class ClassName
+{
+    field1
+    field2
+    ...
+    constructor1
+    constructor2
+    ...
+    method1
+    method2
+    ...
+}
+```
+
+```java
+// EmployeeTest.java
+import java.time.*;
+
+/**
+ * This program tests the Employee class.
+ * @version 1.13 2018-04-10
+ * @author Cay Horstmann
+ */
+public class EmployeeTest
+{
+   public static void main(String[] args)
+   {
+      // fill the staff array with three Employee objects
+      Employee[] staff = new Employee[3];
+
+      staff[0] = new Employee("Carl Cracker", 75000, 1987, 12, 15);
+      staff[1] = new Employee("Harry Hacker", 50000, 1989, 10, 1);
+      staff[2] = new Employee("Tony Tester", 40000, 1990, 3, 15);
+
+      // raise everyone's salary by 5%
+      for (Employee e : staff)
+         e.raiseSalary(5);
+
+      // print out information about all Employee objects
+      for (Employee e : staff)
+         System.out.println("name=" + e.getName() + ",salary=" + e.getSalary() + ",hireDay=" 
+            + e.getHireDay());
+   }
+}
+
+class Employee
+{
+   private String name;
+   private double salary;
+   private LocalDate hireDay;
+
+   public Employee(String n, double s, int year, int month, int day)
+   {
+      name = n;
+      salary = s;
+      hireDay = LocalDate.of(year, month, day);
+   }
+
+   public String getName()
+   {
+      return name;
+   }
+
+   public double getSalary()
+   {
+      return salary;
+   }
+
+   public LocalDate getHireDay()
+   {
+      return hireDay;
+   }
+
+   public void raiseSalary(double byPercent)
+   {
+      double raise = salary * byPercent / 100;
+      salary += raise;
+   }
+}
+```
+
+在这个示例程序中包含两个类：Employee类和带有public访问修饰符的EmployeeTest
+类。EmployeeTest类包含main方法。
+
+源文件名是EmployeeTest.java,这是因为文件名必须与public类的名字匹配。一个源文件中只能有一个公共类，但可以有任意数目的非公共类。
+
+接下来，编译这段源代码的时候，编译器将在目录中创建两个类文件：EmployeeTest.class和Employee.class。
+
+#### 4.3.2 使用多个源文件
+
+建议各个类放在一个单独的源文件中。例如，将Employee类存放在文件Employee.java中，而将EmployeeTest类存放在文件EmployeeTest.java中。
+
+编译时可以使用通配符，一次性编译多个文件：
+
+```bash
+# 匹配Employee开头的java源文件
+javac Employee*.java
+
+# 或者之间编译所有java源文件
+javac *.java
+```
+
+此外，直接`javac EmployeeTest.java`其实也可以同时编译Employee.java，因为EmployeeTest.java中使用了Employee类。可以理解为java编译器内置了类似make的功能。
+
+#### 4.3.3 刨析Employee类
+
+```java
+class Employee
+{
+   private String name;
+   private double salary;
+   private LocalDate hireDay;
+
+   public Employee(String n, double s, int year, int month, int day)
+   public String getName()
+   public double getSalary()
+   public LocalDate getHireDay()
+   public void raiseSalary(double byPercent)
+}
+```
+
+Employee类用`public`标识所有方法，标识任何类的任何方法都可以调用；用`private`标识所有实例字段，标识任何其他类的方法都不能读写这些字段。
+
+#### 4.3.4 从构造器开始
+
+```java
+   public Employee(String n, double s, int year, int month, int day)
+   {
+      name = n;
+      salary = s;
+      hireDay = LocalDate.of(year, month, day);
+   }
+```
+
+- 构造器与类同名。
+- 每个类可以有一个以上的构造器。
+- 构造器可以有0个、1个或多个参数。
+- 构造器没有返回值。
+- 构造器总是结合new操作符一起调用。
+
+#### 4.3.5 用var声明局部变量
+
+在Java 10中，如果可以从变量的初始值推导出它们的类型，那么可以用`var`关键字声明
+局部变量，而无须指定类型。以避免重复写类型名。
+
+注意var关键字只能用于方法中的局部变量。参数和字段的类型必须声明。
+
+```java
+// 显示声明
+Employee harry = new Employee("Harry Hacker",50000,1989,10,1);
+// 自动推断
+var harry = new Employee("Harry Hacker",50000,1989,10,1);
+```
+
+#### 4.3.6 使用null引用
+
+对象变量包含一个对象的引用，或者包含一个特殊值`null`，后者表示没有引用任何对象。如果对null值应用一个方法，会产生一个`NullPointerException`异常。
+
+```java
+LocalDate rightNow = null;
+String s = rightNow.toString(); // NullPointerException
+```
+
+例如Employee的构造器中，name可能为null，就需要手动进行检查：
+
+```java
+// 简单语法
+if(n == null) name = "unknown"; else name = n;
+// 使用Object类赋默认值
+name = Objects.requireNonNullElse(n, "unknown");
+// 使用Objectl类校验
+name = Objects.requireNonNull(n, "The name cannot be null");
+/*
+|  异常错误 java.lang.NullPointerException：The name cannot be null
+|        at Objects.requireNonNull (Objects.java:246)
+|        at (#6:1)
+*/
+```
+
+#### 4.3.7 隐式参数与显式参数
+
+方法会操作对象并访问它们的实例字段。例如raiseSalary方法：
+
+```java
+public void raiseSalary(double byPercent)
+{
+    double raise = salary * byPercent / 100;
+    salary += raise;
+}
+
+// numbere007.raiseSalary(5);
+```
+
+该方法有两个参数。第一个参数是出现在方法名前的Employee类型的对象，称为**隐式（implicit）参数**；第二个参数是位于方法名后面括号中的数值，这是一个**显式（explicit）参数**。
+
+可以看到，显式参数显式地列在方法声明中，例如 double byPercent。隐式参数则没有出现在方法声明中。
+
+也可以使用关键字this指示隐式参数。这样可以将实例字段与局部变量明显地区分开来。
+
+```java
+public void raiseSalary(double byPercent)
+{
+    double raise = this.salary * byPercent / 100;
+    this.salary += raise;
+}
+```
+
+#### 4.3.8 封装的优点
+
+```java
+   public String getName()
+   {
+      return name;
+   }
+
+   public double getSalary()
+   {
+      return salary;
+   }
+
+   public LocalDate getHireDay()
+   {
+      return hireDay;
+   }
+```
+
+这些都是典型的访问器方法。由于它们只返回实例字段的值，因此又称为**字段访问器（field accessor）**。
+
+建议通过访问器/修改器使用实例字段，而不是直接对外暴露字段。
+
+- 首先可以保护实例字段不被预期以外的行为更改，例如name为只读字段，salary只能使用raiseSalary修改，出了问题也方便调试。
+- 另一方面可以改变内部实现而不影响外部代码，例如姓名改成firstName和lastName后只需要修改访问器getName的实现为firstName+LastName。
+- 最后可以在更改器中封装错误检查等常用逻辑。例如在setSalary方法可以检查工资是否小于0。
+
+需要注意的是，不要编写返回可变对象引用的访问器方法。
+
+```java
+class Employee
+{
+   private LocalDate hireDay;
+
+   public Date getHireDay()
+   {
+      return (Date) hireDay;
+   }
+}
+```
+
+LocalDate类没有更改器方法，但Date类有一个更改器方法setTime。如上，如果将hireDay返回为Date类型，外部就可以通过获取到的引用修改内部变量，破坏封装性。
+
+```java
+Employee harry = new Employee("Harry Hacker",50000,1989,10,1);
+Date d= harry.getHireDay();
+double tenYearsInMilliseconds = 10*365.25*24*60*60*1000;
+d.setTime(d,getTime()-(long) tenYearsInMilliseconds);
+// let's give Harry ten years of added seniority
+```
+
+如果需要返回一个可变对象的引用，首先应该对它进行**克隆(clone)**。
+
+```java
+class Employee
+{
+   private LocalDate hireDay;
+
+   public Date getHireDay()
+   {
+      return (Date) hireDay.clone();
+   }
+}
+```
+
+#### 4.3.9 基于类的访问权限
+
+方法可以访问**调用这个方法的对象**的私有数据。一个类的方法可以访问**这个类的所有对象**的私有数据。如下是一个示例：
+
+```java
+class Employee {
+    public boolean equals(Employee other)
+    {
+        return name.equals(other.name);
+    }
+}
+
+// if(harry.equals(boss)) ...
+```
+
+equals是Employee类的方法，而boss虽然不是调用方法的对象，但也是Employee类的对象，所以可以被quials方法访问。
+
+#### 4.3.10 私有方法
+
+在Java中，要实现一个私有方法，只需将关键字`public`改为`private`即可。
+
+#### 4.3.11 final实例字段
+
+可以将实例字段定义为final。这样的字段**必须**在构造对象时初始化。也就是说，必须确保在每一个构造器执行之后，这个字段的值已经设置，并且以后不能再修改这个字段。
+
+final修饰符对于类型为基本类型或者**不可变类**的字段尤其有用。对于可变类，使用final修饰符可能会造成混乱。final关键字只是表示存储在变量中的对象引用不会再指示另一个不同的对象。但这个对象本身可以更改的。
+
+### 4.4 静态字段与静态方法
+
+#### 4.4.1 静态字段
+
+如果将一个字段定义为static，那么这个字段并不出现在每个类的对象中。每个静态字段只有一个副本。可以认为静态字段属于类，而不属于单个对象。
+
+一个使用示例，全局唯一的自增id：
+
+```java
+
+class Employee
+{
+    private static int nextTd = 1;
+    private int id;
+
+    public Employee() {
+        id = nextId;
+        nextId++;
+    }
+}
+```
+
+#### 4.4.2 静态常量
+
+相比于静态变量，更常用的是静态常量。
+
+```java
+public class Math
+{
+    public static final double PI = 3.14159265358979323846;
+}
+```
+
+#### 4.4.3 静态方法
+
+静态方法是不操作对象的方法，即没有隐式参数。例如`Math.pow(x,a)`计算x<sup>a</sup>，不依赖具体的Math对象。
+
+Employee类的静态方法不能访问非静态的id实例字段，因为它并不操作对象。但是，静态方法可以访问静态字段。
+
+```java
+
+class Employee
+{
+    private static int nextTd = 1;
+    private int id;
+
+    public static int advanceId(){
+        int r= nextId;// obtain next available id
+        nextId++;
+        return r;
+    }
+}
+
+// int n= Employee.advanceId();
+```
+
+下面两种情况可以使用静态方法：
+
+- 方法不需要访问对象状态，因为它需要的所有参数都通过显式参数提供（例如Math.pow）。
+- 方法只需要访问类的静态字段（例如Employee.advanceId）。
+
+#### 4.4.4 工厂方法
+
+静态方法的一种常见用途是使用静态**工厂方法（factory method）**构造对象。
+
+```java
+NumberFormat currencyFormatter = NumberFormat.getCurrencyInstance();
+NumberFormat percentFormatter = NumberFormat.getPercentInstance();
+double x = 0.1;
+System.out.println(currencyFormatter.format(x)); // prints $0.10
+System.out.println(percentFormatter.format(x)); // prints 10%
+```
+
+不使用构造器是因为无法为构造器命名且构造的类型固定，而我们需要两种不同的实例。
+
+#### 4.4.5 main方法
+
+main方法也是一个静态方法。每一个类都可以有一个main方法。这是为类增加演示代码的一个技巧。直接`java 类名`就可以运行这个main方法。如果该类是更大应用的一部分，那么在运行应用时类的main方法不会执行。
+
+```java
+/**
+ * This program demonstrates static methods.
+ * @version 1.03 2021-09-03
+ * @author Cay Horstmann
+ */
+public class StaticTest
+{
+   public static void main(String[] args)
+   {
+      // fill the staff array with three Employee objects
+      var staff = new Employee[3];
+
+      staff[0] = new Employee("Tom", 40000);
+      staff[1] = new Employee("Dick", 60000);
+      staff[2] = new Employee("Harry", 65000);
+
+      // print out information about all Employee objects
+      for (Employee e : staff)
+      {
+         System.out.println("name=" + e.getName() + ",id=" + e.getId() + ",salary="
+            + e.getSalary());
+      }
+
+      int n = Employee.advanceId(); // calls static method
+      System.out.println("Next issued id=" + n);
+   }
+}
+
+class Employee
+{
+   private static int nextId = 1;
+
+   private String name;
+   private double salary;
+   private int id;
+
+   public Employee(String n, double s)
+   {
+      name = n;
+      salary = s;
+      id = advanceId();
+   }
+
+   public String getName()
+   {
+      return name;
+   }
+
+   public double getSalary()
+   {
+      return salary;
+   }
+
+   public int getId()
+   {
+      return id;
+   }
+
+   public static int advanceId()
+   {
+      int r = nextId; // obtain next available id
+      nextId++;
+      return r;
+   }
+
+   public static void main(String[] args) // unit test
+   {
+      var e = new Employee("Harry", 50000);
+      System.out.println(e.getName() + " " + e.getSalary());
+   }
+}
+
+/*
+> java Employee        
+Harry 50000.0
+
+> java StaticTest  
+name=Tom,id=1,salary=40000.0
+name=Dick,id=2,salary=60000.0
+name=Harry,id=3,salary=65000.0
+Next issued id=4
+*/
+```
+
+### 4.5 方法参数
+
+**按值调用（call by value）**表示方法接收的是调用者提供的值。而**按引用调用（call by reference）**表示方法接收的是调用者提供的变量**位置（location）**。所以，方法可以修改按引用传递的变量的值，而不能修改按值传递的变量的值。
+
+Java程序设计语言总是采用按值调用。也就是说，方法会得到所有参数值的一个副本。
+对于基本数据类型的参数，内部变量的变更不会影响外部变量。而对于对象参数，虽然传递的是这个对象的引用的副本，但因为两个引用都指向一个对象，所以外部变量的状态也可以被改变。
+
+对于对象参数，容易将其误解为按引用调用，实际上还是按值调用，是复制了引用的值。如下是一个示例：
+
+```java
+class Employee {
+    private String name;
+
+    public Employee(String n) {
+        name = n;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    // doesn't work
+    public static void swap(Employee x,Employee y) {
+        Employee temp = x;
+        x = y;
+        y = temp;
+    }
+}
+
+var a = new Employee("Alice");
+var b= new Employee("Bob");
+Employee.swap(a, b);
+// does a now refer to Bob, b to Alice?
+
+System.out.println("a: " + a.getName()); // a: Alice
+System.out.println("b: " + b.getName()); // b: Bob
+```
+
+如上swap方法只交换了方法内副本引用指向的变量，而外部的引用还是指向原本的变量。说明**对象引用（object reference）**也是按值传递的。
+
+总结：
+
+- 方法不能修改基本数据类型的参数（即数值型或布尔型）。
+- 方法可以改变对象参数的状态。
+- 方法不能让一个对象参数引用一个新对象。
+
+完整测试代码：
+
+```java
+/**
+ * This program demonstrates parameter passing in Java.
+ * @version 1.01 2018-04-10
+ * @author Cay Horstmann
+ */
+public class ParamTest
+{
+   public static void main(String[] args)
+   {
+      /*
+       * Test 1: Methods can't modify numeric parameters
+       */
+      System.out.println("Testing tripleValue:");
+      double percent = 10;
+      System.out.println("Before: percent=" + percent);
+      tripleValue(percent);
+      System.out.println("After: percent=" + percent);
+
+      /*
+       * Test 2: Methods can change the state of object parameters
+       */
+      System.out.println("\nTesting tripleSalary:");
+      var harry = new Employee("Harry", 50000);
+      System.out.println("Before: salary=" + harry.getSalary());
+      tripleSalary(harry);
+      System.out.println("After: salary=" + harry.getSalary());
+
+      /*
+       * Test 3: Methods can't attach new objects to object parameters
+       */
+      System.out.println("\nTesting swap:");
+      var a = new Employee("Alice", 70000);
+      var b = new Employee("Bob", 60000);
+      System.out.println("Before: a=" + a.getName());
+      System.out.println("Before: b=" + b.getName());
+      swap(a, b);
+      System.out.println("After: a=" + a.getName());
+      System.out.println("After: b=" + b.getName());
+   }
+
+   public static void tripleValue(double x) // doesn't work
+   {
+      x = 3 * x;
+      System.out.println("End of method: x=" + x);
+   }
+
+   public static void tripleSalary(Employee x) // works
+   {
+      x.raiseSalary(200);
+      System.out.println("End of method: salary=" + x.getSalary());
+   }
+
+   public static void swap(Employee x, Employee y)
+   {
+      Employee temp = x;
+      x = y;
+      y = temp;
+      System.out.println("End of method: x=" + x.getName());
+      System.out.println("End of method: y=" + y.getName());
+   }
+}
+
+class Employee // simplified Employee class
+{
+   private String name;
+   private double salary;
+
+   public Employee(String n, double s)
+   {
+      name = n;
+      salary = s;
+   }
+
+   public String getName()
+   {
+      return name;
+   }
+
+   public double getSalary()
+   {
+      return salary;
+   }
+
+   public void raiseSalary(double byPercent)
+   {
+      double raise = salary * byPercent / 100;
+      salary += raise;
+   }
+}
+
+/*
+Testing tripleValue:
+Before: percent=10.0
+End of method: x=30.0
+After: percent=10.0
+
+Testing tripleSalary:
+Before: salary=50000.0
+End of method: salary=150000.0
+After: salary=150000.0
+
+Testing swap:
+Before: a=Alice
+Before: b=Bob
+End of method: x=Bob
+End of method: y=Alice
+After: a=Alice
+After: b=Bob
+*/
+```
+
 ## 总结
+
+（未待完续）
