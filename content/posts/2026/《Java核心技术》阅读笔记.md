@@ -1589,6 +1589,465 @@ After: b=Bob
 */
 ```
 
+### 4.6 对象构造
+
+#### 4.6.1 重载
+
+果多个方法有相同的方法名但有不同的参数，便出现了**重载（overloading）**。
+
+编译器用各个方法首部中的参数类型与特定方法调用中所使用的值类型进行匹配，来选出正确的方法。如果编译器无法匹配参数，就会产生编译时错误。个查找匹配的过程称为**重载解析（overloading resolution）**。
+
+#### 4.6.2 默认字段初始化
+
+如果在构造器中没有显式地为一个字段设置初始值，就会将它自动设置为默认值：数值将设置为θ，布尔值为false，对象引用为null。
+
+这是字段与局部变量的一个重要区别。方法中的局部变量必须明确地初始化。但是在类中，如果没有初始化类中的字段，将会自动初始化为默认值。
+
+#### 4.6.3 无参数的构造器
+
+很多类都包含无参数的构造器，由无参数构造器创建对象时，对象的状态会设置为适当的默认值。
+
+如果写的类没有构造器，就会为你提供一个无参数构造器。这个构造器将所有的实例字段设置为相应的默认值。
+
+如果类中提供了至少一个构造器，但是没有提供无参数构造器，那么构造对象时就必须提供参数，否则就是不合法的。
+
+#### 4.6.4 显式字段初始化
+
+通过重载类的构造器方法，可以采用多种形式设置类实例字段的初始状态。
+
+可以在类定义中直接为任何字段赋值。
+
+```java
+class Employee
+{
+    private String name =""; // 常量初始化
+    private static int nextId;
+    private int id= advanceId(); // 方法初始化
+
+    private static int advanceId() {
+        int r = nextId;
+        nextId++;
+        return r;
+
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public int getID() {
+        return id;
+    }
+}
+```
+
+#### 4.6.5 参数名
+
+使用单字母作为参数名很简便但可读性较差。一种方法是使用a前缀，另一种方法是直接*遮蔽*同名的实例字段，然后通过`this.field`的方法访问实例字段。
+
+```java
+// 单字母
+public Employee(String n, double s)
+{
+    name = n;
+    salary = s;
+}
+
+// a前缀
+public Employee(String aName, double aSalary)
+{
+    name = aName;
+    salary = aSalary;
+}
+
+// 遮蔽实例字段
+public Employee(String name, double salary)
+{
+    this.name = name;
+    this.salary = salary;
+}
+```
+
+#### 4.6.6 调用另一个构造器
+
+如果构造器的第一个语句形如`this(...)`，这个构造器将调用同一个类的另一个构造器。
+
+```java
+public Employee(double s)
+{
+    // calls Employee(String, double)
+    this("Employee #" + nextId, s);
+    nextId++;
+}
+```
+
+#### 4.6.7 初始化块
+
+在一个类的声明中，可以包含任意的代码块。构造这个类的对象时，这些块就会执行。这种机制成为称为**初始化块（initialization block）**。类似Golang的init()。
+
+```java
+class Employee
+{
+    private static int nextId;
+    private int id;
+    private String name;
+    private double salary;
+
+    // object initialization block
+    {
+    id = nextId;
+    nextId++;
+    }
+
+    public Employee(String n, double s)
+    {
+    name = n;
+    salary = s;
+    }
+
+    public Employee()
+    {
+    name = "";
+    salary = 0;
+    }
+}
+
+如果类的静态字段需要很复杂的初始化代码，那么可以使用静态的初始化块。
+
+```java
+private static Random generator = new Random();
+// static initialization block
+static
+{
+    nextId = generator.nextInt(10000);
+}
+```
+
+本节小结：
+
+- 重载构造器；
+- 用`this(...)`调用另一个构造器；
+- 无参数构造器；
+- 对象初始化块；
+- 静态初始化块；
+- 实例字段初始化。
+
+```java
+import java.util.*;
+
+/**
+ * This program demonstrates object construction.
+ * @version 1.02 2018-04-10
+ * @author Cay Horstmann
+ */
+public class ConstructorTest
+{
+   public static void main(String[] args)
+   {
+      // fill the staff array with three Employee objects
+      var staff = new Employee[3];
+
+      staff[0] = new Employee("Harry", 40000);
+      staff[1] = new Employee(60000);
+      staff[2] = new Employee();
+
+      // print out information about all Employee objects
+      for (Employee e : staff)
+         System.out.println("name=" + e.getName() + ",id=" + e.getId() + ",salary="
+            + e.getSalary());
+   }
+}
+
+class Employee
+{
+   private static int nextId;
+
+   private int id;
+   private String name = ""; // instance field initialization
+   private double salary;
+
+   private static Random generator = new Random();
+   
+   // static initialization block
+   static
+   {
+      // set nextId to a random number between 0 and 9999
+      nextId = generator.nextInt(10000);
+   }
+
+   // object initialization block
+   {
+      id = nextId;
+      nextId++;
+   }
+
+   // three overloaded constructors
+   public Employee(String n, double s)
+   {
+      name = n;
+      salary = s;
+   }
+
+   public Employee(double s)
+   {
+      // calls the Employee(String, double) constructor
+      this("Employee #" + nextId, s);
+   }
+
+   // the default constructor
+   public Employee()
+   {
+      // name initialized to ""--see above
+      // salary not explicitly set--initialized to 0
+      // id initialized in initialization block
+   }
+
+   public String getName()
+   {
+      return name;
+   }
+
+   public double getSalary()
+   {
+      return salary;
+   }
+
+   public int getId()
+   {
+      return id;
+   }
+}
+```
+
+#### 4.6.8 对象析构与finalize方法
+
+C++有显式的析构器方法，但Java有GC所以不支持析构器。
+
+如果一个资源一旦使用完就需要立即关闭，那么应当提供一个close方法来完成必要的清理工作。可以在对象使用完时调用这个close方法。
+
+如果可以等到虚拟机退出，那么可以用方法Runtime.addshutdownHook增加一个“关闭钩”（shutdown hook）。在Java 9中，可以使用Cleaner类注册一个动作，当对象不再可达时（除了清洁器还能访问，其他对象都无法访问这个对象），就会完成这个动作。不过在实际中这些情况很少见。
+
+不要使用finalize方法来完成清理。该方法已经被废弃。
+
+### 4.7 记录
+
+创建一个类需要大量样板代码。对于不需要负担复杂业务逻辑的数据集合来说很麻烦，所以新增了一个“记录”特性。
+
+#### 4.7,1 记录概念
+
+**记录（record）**是一种特殊形式的类，其状态不可变，而且公共可读。一个记录的实例字段称为**组件（component）**。
+
+```java
+record Point(double x, double y) {}
+
+// 类比为类等价如下
+class Point {
+    private final double x;
+    private final double y;
+    
+    Point(double x, double y) {
+        this.x = x;
+        this.y = y;
+    }
+
+    public double x() { return this.x; }
+    public double y() { return this.y; }
+
+    public String toString() {...}
+    public boolean equals(Object o) {...}
+    public int hashCode() {...}
+}
+```
+
+如上，对于声明的record，将会自动包含实例字段、构造器、公共访问方法（方法名与组件同名，例如 x()、y()，而不是传统的 getX()）、toSring,equals和hashCode方法，不需要手动实现这些样板代码。
+
+当然，也可以像类一样重写已有方法或者添加自定义方法，但注意**不能为记录增加实例字段**。
+
+记录的实例字段自动为final字段。不过，它们可能是可变对象的引用，这样记录实例将是可变的。如果希望记录实例是不可变的，那么字段就不能使用可变的类型。
+
+```java
+record PointInTime(double x, double y, Date when) { }
+
+var pt = new PointInTime(0, 0, new Date()); 
+// Mon Jun 15 10:34:11 HKT 2026
+pt.when().setTime(0); 
+// Thu Jan 01 08:00:00 HKT 1970
+```
+
+#### 4.7.2 构造器：标准、自定义和简洁
+
+自动定义地设置所有实例字段的构造器称为**标准构造器（canonical constructor）**。
+
+和[4.6.6](#466-调用另一个构造器)一样，还可以定义另外的**自定义构造器（custom constructor）**，再通过`this(...)`，调用主构造器。
+
+```java
+record Point(double x, double y) {
+    private final double x;
+    private final double y;
+    
+    // 标准构造器，一般由record默认实现
+    Point(double x, double y) {
+        this.x = x;
+        this.y = y;
+    }
+
+    // 自定义构造器，通过this()调用主构造器
+    Point() { this(0, 0) }
+}
+```
+
+如果需要完成额外的工作，可以重写标准构造器。此外，record也支持一种**简洁构造器（compact constructor）**，不用指定参数列表和手动赋值。
+
+```java
+// 标准构造器
+record Range(int from, int to)
+{
+    public Range(int from, int to)
+    {
+        if(from <= to)
+        {
+            this.from = from;
+            this.to = to;
+        }
+        else
+        {
+            this.from = to;
+            this.to = from;
+        }
+    }
+}
+
+// 简洁构造器
+record Range(int from, int to)
+{
+    public Range
+    {
+        if(from > to)
+        {
+            int temp = from;
+            from = to;
+            to= temp;
+        }
+    }
+}
+```
+
+简洁形式构造器相当于标准构造器的预处理，它只是在为实例字段this.from和 this.to赋值之前修改参数变量from和to。不能在简洁构造器的主体中读取或修改实例字段，因为此时字段尚未初始化，只能修改参数变量。
+
+### 4.8 包
+
+Java使用**包（package）**将类组织在一个集合中，方便组织代码，和区分不同的代码库。
+
+#### 4.8.1 包名
+
+使用包的主要原因是确保类名的唯一性。常见包名形式是使用因特网域名逆序+项目名+类名，如com.horstmann.corejava.Employee。
+
+#### 4.8.2 类的导入
+
+一个类可以使用所属包（这个类所在的包）中的所有类，以及其他包中的**公共类（public class）**。
+
+有两种方式访问另一个包中的公共类。第一种方式是使用**完全限定名（fully qualified name）**，也就是包名+类名，比较繁琐。更简单且更常用的方式是使用import语句，在使用类时不必写出类的全名。
+
+```java
+// 完全限定名
+java.time.LocalDate today = java.time.LocalDate.now();
+
+// 使用import语句，导入java.time包
+import java.time.*;
+// 或者导入包中特定类
+// import java.time.LocalDate;
+LocalDate today = LocaDate.now();
+```
+
+如果要使用不同包的同名类，可以临时回退到完全限定名避免冲突。
+
+```java
+var startTime = new java.util.Date();
+var today = new java.sql.Date(...);
+```
+
+Java中的package和import语句类似于C++中的namespace和using指令。
+
+#### 4.8.3 静态导入
+
+可以使用`static`关键字导入静态方法和静态字段，不必加类名前缀。
+
+```java
+// 无静态导入
+Math.sqrt(Math.pow(x,2)+ Math.pow(y,2))
+
+// 静态导入
+import static java.lang.Math.*;
+sqrt(pow(x,2)+ pow(y,2))
+```
+
+#### 4.8.4 在包中增加类
+
+要想将类放入包中，就必须将包名放在源文件的开头，即放在定义这个包中各个类的代码之前。
+
+```java
+package com.horstmann.corejava;
+
+public class Employee
+{
+    ...
+{
+```
+
+如果没有在源文件中放置package语句，那么这个源文件中的类就属于**无名包（unnamed package）。**无名包没有包名。
+
+源文件应该放到与完整包名匹配的子目录中。
+
+#### 4.8.5 包访问
+
+- 标记为public的部分可以由任意类使用；
+- 标记为private的部分只能由定义它们的类使用。
+- 如果没有指定public或private,这个部分（类、方法或变量）可以由同一个包中的所有方法访问。
+
+#### 4.8.6 类路径
+
+类除了存储在与包名匹配的文件系统的子目录中，也可以存储在JAR（Java归档）文件中。在一个JAR文件中，可以包含多个压缩格式的类文件和子目录，这样既可以节省空间又可以改善性能。
+
+类路径（class path）是所有包含类文件的路径的集合。在UNIX环境中，类路径中的各项之间用冒号（:）分隔，而在Windows环境中，则以分号（;）分隔。不论是UNIX还是Windows,都用句点（.）表示当前目录。
+
+```bash
+# unix
+/home/user/classdir:.:/home/user/archives/archive.jar
+
+# windows
+c:\classdir;.;c:\archives\archive.jar
+```
+
+#### 4.8.7 设置类路径
+
+最好使用`-classpath`或`-cp`选项指定类路径:
+
+```bash
+# unix
+java -classpath /home/user/classdir:.:/home/user/archives/archive.jar MyProg
+
+# windows
+java -classpath c:\classdir;.;c:\archives\archive.jar MyProg
+```
+
+另一种方法是通过设置CLASSPATH环境变量来指定类路径。具体细节依赖于所使用的shell。
+
+```bash
+# bash
+export CLASSPATH=/home/user/classdir:.:/home/user/archives/archive.jar
+
+# Windows shell
+set CLASSPATH=c:\classdir;.;c:\archives\archive.jar
+```
+
+### 4.9 JAR文件
+
+TODO：暂时跳过。
+
+### 4.10 文档注释
+
+TODO：暂时跳过。
+
 ## 总结
 
 （未待完续）
