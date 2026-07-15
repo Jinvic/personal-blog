@@ -2042,11 +2042,217 @@ set CLASSPATH=c:\classdir;.;c:\archives\archive.jar
 
 ### 4.9 JAR文件
 
-TODO：暂时跳过。
+JAR使用了ZIP压缩格式。
+
+更多关于jar命令和JAR文件规范可以查阅官方文档：
+
+- [jar](https://docs.oracle.com/en/java/javase/25/docs/specs/man/jar.html)
+- [JAR](https://docs.oracle.com/en/java/javase/25/docs/specs/man/index.html)
+
+#### 4.9.1 创建JAR文件
+
+```bash
+jar options file1 file2
+
+# e.g.
+jar cvf CalculatorClasses.jar *.class icon.gif
+```
+
+jar的选项类似于UNIX tar命令的选项。
+
+![jar程序选项](/post-images/《Java核心技术》阅读笔记/v1ch04_01.png)
+
+#### 4.9.2 清单文件
+
+每个JAR文件包含一个**清单文件（manifest）**，用于描述归档文件的特殊特性。
+
+清单文件被命名为`MANIFEST.MF`,它位于JAR文件的一个特殊的META-INF子目录中。
+
+合法的最小清单文件极其简单：`Manifest-Version: 1.0`。
+
+复杂的清单文件可能包含更多条目。这些清单条目被分组为多个节。第一节被称为**主节（main section）**。它作用于整个JAR文件。随后的条目可以指定命名实体的属性，如单个文件、包或者URL。它们都必须以一个Name条目开始。节与节之间用空行分开。
+
+```txt
+Manifest-Version: 1.0
+lines describing this archive
+
+Name:Woozle.class
+lines describing this file
+Name: com/mycompany/mypkg/
+lines describing this package
+```
+
+### 4.9.3 可执行JAR文件
+
+可以使用jar命令中的`e`选项指定程序的入口点，即通常调用java执行程序时指定的类：
+
+```bash
+jar cvfe MyProgram.jar com.mycompany.mypkg.MainAppClass ...
+```
+
+或者在清单文件中指定程序的主类，不需要加扩展名.class：
+
+```bash
+Main-Class: com.mycompany.mypkg.MainAppClass
+```
+
+可以通过`-jar`选项启动JAR文件：
+
+```bash
+java -jar MyProgram.jar
+```
+
+### 4.9.4 多版本JAR文件
+
+简单来说，多版本JAR文件的目的是让同一个JAR兼容多版本，而不需要对各个版本分别打包，实现用户无感，不需要手动选择对应版本的JAR包。
+
+但这个特性并不常用。首先，大部分应用只跑在一个固定的JDK版本上，不需要在不同JDK版本上运行。其次，对于库维护者更常见的做法也是直接提升最低JDK版本要求，而不是维护多版本。最后，也可以在代码里判断JDK版本，动态选择不同的实现路径。这样就不需要特殊构建流程，简单直观。
+
+```java
+public class CssParserFactory {
+    public static CssParser create() {
+        if (Runtime.version().feature() >= 9) {
+            return new Java9CssParser();  // 使用新 API
+        } else {
+            return new Java8CssParser();  // 使用旧 API
+        }
+    }
+}
+```
+
+总的来说，这个特性不需要过多了解。
+
+### 4.9.5 关于命令行选项的说明
+
+简单来说就是屎山，各种用法并不统一，简单看看就行，不用深入了解。
 
 ### 4.10 文档注释
 
-TODO：暂时跳过。
+`javadoc`工具可以由源文件生成一个HTML文档。简单看看就行，不了解这些规则也看得懂注释。
+
+[官方文档](https://docs.oracle.com/en/java/javase/26/docs/specs/man/javadoc.html)
+
+#### 4.10.1 注释的插入
+
+javadoc主要抽取以下信息：
+
+- 模块；
+- 包；
+- 公共类与接口；
+- 公共的和受保护的字段；
+- 公共的和受保护的构造器及方法。
+
+注释以`/**`开始，并以`*/`结束。含**标记**以及之后紧跟着的**自由格式文本（free-form text）**。标记以`@`开始。自由格式文本的第一个句子应该是一个概要陈述，avadoc工具将抽取生成概要页。
+
+自由格式文本支持HTML修饰符。但要键入等宽代码，需要使用`{@code ⋯ }`而不是`<code>⋯</code>`，避免对代码中的`<`字符转义。
+
+#### 4.10.2 类注释
+
+类注释放在import语句之后，class定义之前。示例如下：
+
+```java
+/**
+* A {@code Card} object represents a playing card, such
+* as "Queen of Hearts".A card has a suit (Diamond, Heart,
+* Spade or Club) and a value (1= Ace, 2...10, 11 = Jack,
+* 12= Queen, 13 = King)
+*/
+public class Card
+{
+    ...
+}
+```
+
+每一行开始的*非必须，但大部分IDE都会自动提供。
+
+#### 4.10.3 方法注释
+
+方法注释放在所描述方法之前。如下是可用标记：
+
+- `@param variable description`
+    这个标记将给当前方法的“parameters”（参数）部分添加一个条目。
+    一个方法的所有@param标记必须放在一起。
+- `@return description`
+    这个标记将给当前方法添加“returns”（返回）部分。
+- `@throws class description`
+    这个标记将添加一个注释，表示这个方法有可能抛出异常。
+
+```java
+/**
+* Raises the salary of an employee.
+* @param byPercent the percentage by which to raise the salary (e.g., 10 means 10%)
+* @return the amount of the raise
+*/
+public double raiseSalary(double byPercent)
+{
+    double raise = salary * byPercent / 100;
+    salary += raise;
+    return raise;
+}
+```
+
+#### 4.10.4 字段注释
+
+只需要对公共字段（通常指的是静态常量）增加文档注释。例如:
+
+```java
+/**
+* The "Hearts" card suit
+*/
+public static final int HEARTS = 1;
+```
+
+#### 4.10.5 通用注释
+
+标记`@since text`会建立一个“since”（始于）条目。text（文本）可以是对引入这个特性的版本的描述。例如，@since 1.7.1。
+
+类文档注释可以使用如下标记：
+
+- `@author name`
+    这个标记将建立一个“author”（作者）条目。可以有多个@author标记，每个@author标记对应一个作者。此标记非必需，git之类版本控制系统能够更好地跟踪作者。
+- `@version text`
+    这个标记将建立一个“version”（版本）条目。这里的text可以是对当前版本的任何描述。
+- `@see reference`
+    这个标记将在在“see also”（参见）部分增加一个超链接。它可以用于类中，也可以用于方法中。可选项如下：
+
+  - `package.class#feature label` 即类名#方法名。
+  - `<a href="...">label</a>` 即外部链接。
+  - text 即任意文本。
+
+#### 4.10.6 包注释
+
+包注释需要在包目录中添加一个单独的文件。有两个选择：
+
+- 提供一个名为package-info.java的Java文件。这个文件必须包含一个初始的Javadoc注释，以`/**`和`*/`界定，后面是一个package语句。它不能包含更多的代码或注释。
+2.提供一个名为package.html的HTML文件，抽取标记`<body>...</body>`之间的所有文本。
+
+#### 4.10.7 注释提取
+
+使用`-d`选项指定存放提取出来的注释的目标目录。
+
+```bash
+# 一个包
+javadoc -d  docDirectory nameOfPackage
+# 多个包
+javadoc -d  docDirectory nameOfPackage1 nameOfPackage2 ...
+# 无名包
+javadoc -d  docDirectory *.java
+```
+
+- 可以使用`-author`和`-version`选项在文档中包含@author和@version标记。
+- 选项`-link`可以用来为标准类添加超链接。
+- 如果使用`-linksource`选项，那么每个源文件将会转换为HTML（不对代码着色，但包含行号）,并且每个类和方法名将变为指向源代码的超链接。
+- 用户可以提供一个类似overview.html的文件作为概要注释。命令行选项`-overview filename`将抽取标记<body>⋯</body>之间的所有文本。当用户从导航栏中选择“Overview”时，就会显示这些内容。
+
+### 4.11 类设计技巧
+
+1. 一定要保证数据私有
+2. 一定要初始化数据
+3. 不要在类中使用过多的基本类型
+4. 不是所有字段都需要单独的字段访问器和更改器
+5. 分解有过多指责的类
+6. 类名和方法名要能够体现他们的职责
+7. 优先使用不可变的类
 
 ## 总结
 
