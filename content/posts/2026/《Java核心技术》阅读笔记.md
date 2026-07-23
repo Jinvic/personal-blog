@@ -826,7 +826,7 @@ int[][] magicSquare =
 
 大意就是，对于多维数组，其元素是Arrays类，但不指定其长度，所以同一层级的Arrays可以拥有不同的长度。
 
-## 第四章 对象与类
+## 第4章 对象与类
 
 ### 4.1 面向对象程序设计概述
 
@@ -2253,6 +2253,604 @@ javadoc -d  docDirectory *.java
 5. 分解有过多指责的类
 6. 类名和方法名要能够体现他们的职责
 7. 优先使用不可变的类
+
+## 第5章 继承
+
+### 5.1 类、超类和子类
+
+#### 5.1.1 定义子类
+
+可以使用`extend`关键字标识继承。
+
+```java
+public class Manager extends Employee
+{
+    ...
+}
+```
+
+关键字extends 指示正在构造的新类派生于一个已存在的类。这个已存在的类称为**超类（superclass）**、**基类（base class）**或**父类（parent class）**；新类称为**子类（subclass/child class）**或**派生类（derived class）**。
+
+通过扩展超类定义子类的时候，只需要指出子类与超类的不同之处。因此，在设计类的时候，应该将最一般的方法放在超类中，而将更特殊的方法放在子类中，这种将通用功能抽取到超类的做法在面向对象程序设计中十分普遍。
+
+#### 5.1.2 覆盖方法
+
+超类中的有些方法对子类不一定适用。这是就需要提供一个新的方法来**覆盖（override）**超类中的这个方法。
+
+```java
+public class Manager extends Employee
+{
+    public double getSalary()
+    {
+        double baseSalary = super.getSalary();
+        return baseSalary + bonus;
+    }
+}
+```
+
+如上，可以使用特殊的关键字`super`指示编译调用超类方法。
+
+子类可以*增加*字段、*增加*方法或*覆盖*超类的方法，但继承不会删除任何字段或方法。
+
+#### 5.1.3 子类构造器
+
+```java
+public Manager(String name, double salary, int year,int month, int day)
+{
+    super(name, salary, year, month, day);
+    bonus = 0;
+}
+```
+
+由于 Manager类的构造器不能访问 Employee类的私有字段，所以必须通过一个构造器来初始化这些私有字段。可以利用特殊的super语法调用这个构造器。使用super调用构造器的语句必须是子类构造器的第一条语句。
+
+如果构造子类对象时没有显式地调用超类的构造器，那么超类必须有一个无参数构造器。这个构造器会在子类构造之前调用。
+
+```java
+Manager boss = new Manager("Carl Cracker",80000,1987,12,15);
+boss.setBonus(5000);
+
+var staff = new Employee[3];
+
+staff[0] = boss; // 向Employee数组传入Manager对象
+staff[1] = new Employee("Harry Hacker",50000,1989,10,1);
+staff[2] = new Employee("Tony Tester",40000,1990,3,15);
+
+for(Employee e:staff)
+    // 对staff[0]，将调用Manager.getSalary()
+    // 对staff[1]，将调用Employee.getSalary()
+    System.out.println(e.getName() + "" + e.getSalary()); 
+
+/*
+Carl Cracker 85000.0
+Harry Hacker 58000.0
+Tommy Tester 40000.0
+*/
+```
+
+如上，一个对象变量（例如，变量e）可以指示多种实际类型，这一点称为**多态（polymorphism）**。在运行时能够自动地选择适当的方法，这称为**动态绑定（dynamic binding）**。
+
+#### 5.1.4 继承层次结构
+
+继承并不仅限于一个层次。由一个公共超类派生出来的所有类的集合称为**继承层次结构（inheritance hierarchy）**，如图所示。在继承层次结构中，从某个特定的类到其祖先的路径称为该类的**继承链（inheritance chain）**。
+
+![继承层次结构](/post-images/《Java核心技术》阅读笔记/v1ch05_01.png)
+
+#### 5.1.5 多态
+
+“is-a”规则可以用来判断是否应该将数据设计为继承关系，它指出子类的每个对象也是超类的对象。另一种表述是**替换原则（substitution principle）**，它指出程序中需要超类对象的任何地方都可以使用子类对象替换。
+
+在Java程序设计语言中，对象变量是**多态（polymorphic）**的。一个超类类型的变量既可以引用一个超类类型的对象，也可以引用超类的任何一个子类的对象。同时，不能将超类的引用赋值给子类。
+
+```java
+public class Employee{}
+public class Manager extends Employee{}
+
+Emploee e;
+e = new Employee(); // OK
+e = new Manager(); // OK
+
+Manager m;
+m = new Manager(); // OK
+e = new Manager();
+m = e; // ERROR 虽然e引用的对象为Manager类型，但e本身是Emploee类型，不能直接复制给Manager类型变量
+
+m = new Manager();
+e = new Manager();
+m.setBonus(5000); // OK
+e.setBonus(5000); // ERROR 虽然e引用的对象为Manager类型，但e本身是Emploee类型，没有setBonus方法
+
+```
+
+可能导致一些问题，如下：
+
+```java
+Manager[] managers = new Manager[10];
+
+// 子类引用数组可以转换成超类引用数组，而不需要使用强制类型转换。
+Employee[] staff = managers; // OK
+
+// staff[0]和managers[0]是相同引用，将报错ArrayException异常。
+staff[0]= new Employee("Harry Hacker",...);
+```
+
+### 5.1.6 理解方法调用
+
+进行方法调用时，编译器首先会查看对象的声明类型和方法名，列举类及其超类中所有方法名相同且课访问的方法。然后确定方法调用中提供的参数类型，若所有方法中存在与所提供参数类型完全匹配的方法则选择该方法，这个过程称为**重载解析（overloading resolution）**。
+
+这个过程允许类型转换（int->double，Manager->Employee等），情况可能很复杂。如果没有找到参数类型匹配的方法或者类型转换后有多个方法匹配，编译器将报错。
+
+返回类型不是签名的一部分。不过在覆盖一个方法时，需要保证返回类型的兼容性。允许子类将覆盖方法的返回类型改为原返回类型的子类型。此时这两个方法有**协变（covariant）**的返回类型。
+
+```java
+public class Employee {
+    public Employee getBuddy(){...}
+}
+public class Manager extends Employee {
+    public Manager getBuddy(){...}// OK to change return type
+}
+```
+
+对于private方法、static方法、final方法或者构造器，编译器可以准确地知道应该调用哪个方法。这称为**静态绑定（static binding）**。与此对应的是，如果要调用的方法依赖于隐式参数的实际类型，那么必须在运行时使用动态绑定。
+
+程序运行并且采用动态绑定调用方法时，虚拟机必须调用与变量所引用对象的实际类型对应的那个方法。若子类有目标方法则调用该方法，否则将在其超类寻找对于方法，以此类推。
+
+每次调用方法都要完成这个搜索，时间开销相当大。因此，虚拟机预先为每个类计算了一个**方法表（method table）**,其中列出了所有方法的签名和要调用的实际方法。这样一来，真正调用方法的时候，虚拟机仅查找这个表就行了。
+
+```java
+Employee:
+    getName()-> Employee.getName()
+    getSalary()->Employee.getSalary()
+    getHireDay()-> Employee.getHireDay()
+    raiseSalary(double)->Employee.raiseSalary(double)
+
+Manager:
+    getName()->Employee.getName()
+    getSalary()->Manager.getSalary()
+    getHireDay()->Employee.getHireDay()
+    raiseSalary(double)->Employee.raiseSalary(double)
+    setBonus(double)->Manager.setBonus(double)
+```
+
+动态绑定有一个非常重要的特性：无须修改现有的代码就可以对程序进行扩展。假设增加一个新类，当变量引用这个类的对象时，我们不需要对方法调用的代码重新进行编译，而是会自动调用新类的方法。
+
+覆盖一个方法的时候，子类方法不能低于超类方法的可见性。
+
+### 5.1.7 阻止继承：final类方法
+
+如果在类定义中使用了final修饰符，就表明这个类不允许扩展，被称为final类。也可以将类中的某个特定方法声明为final，所有子类都不能覆盖这个方法（final类中的所有方法自动地成为final方法）。
+
+```java
+public final class Executive extends Manager {}
+
+public class Employee{
+    private String name;
+
+    public final String getName(){
+        return name;
+    }
+}
+```
+
+> 字段也可以声明为final。对于final字段来说，构造对象之后就不允许改变了。不过，如果将一个类声明为final,只有其中的方法自动地成为final，而不包括字段。
+
+早期会使用final关键字进行**内联（inline）**优化，但现在的编译器能力够强会自动处理内联，手写final标注几乎无效。所以绝不要因为“性能”而使用 final，而是用于确保它们不会在子类中改变语义。
+
+> 举和记录总是final,它们不允许扩展。
+
+#### 5.1.8 强制类型转换
+
+除了基本数据类型，对象引用也可以进行强制类型转换。
+
+- 只能在继承层次结构内进行强制类型转换。
+- 在将超类强制转换成子类之前，应该使用instanceof进行检查。
+
+在进行强制类型转换之前，建议使用`instanceof`操作符先查看是否能够成功地转换。
+
+```java
+var staff = new Employee[3];
+staff[0] = new Manager("Carl Cracker",80000,1987,12,15);
+staff[1] = new EmpLoyee("Harry Hacker",50000,1989,10,1);
+staff[2] = new Employee("Tony Tester",40000,1990,3,15);
+
+Manager boss=(Manager)staff[0]; // OK
+Manager boss =(Manager) staff[1]; // ERROR ClassCastException
+
+if (staff[i] instanceof Manager)
+{
+    boss = (Manager) staff[i];
+}
+```
+
+实际上，通过强制类型转换来转换对象的类型通常并不是一个好主意。如果需要在超类上调用子类方法，就应该考虑是否有必要重新设计超类添加该方法。一般情况下，最好尽量少用强制类型转换和instanceof操作符。
+
+#### 5.1.9 instanceof 模式匹配
+
+```java
+// 反复提到子类 Manager 3次
+if(staff[i] instanceof Manager)
+{
+    Manager boss = (Manager) staff[i];
+    boss.setBonus(5000);
+}
+
+// java16新增，检查通过直接声明并赋值变量
+if(staff[i] instanceof Manager boss)
+{
+    boss.setBonus(5000);
+}
+```
+
+#### 5.1.10 受保护访问
+
+`protected`修饰的成员（字段或方法）可以被同一个包中的任何类访问，以及不同包中的子类访问。简单来说，就是在默认本包访问的基础上加上对子类开放访问权限。
+
+1. 仅本类可以访问——private。
+2. 可由外部访问——public。
+3. 本包和所有子类可以访问——protected。
+4. 本包中可以访问——默认，不需要修饰符。
+
+不建议使用受保护字段，它将破坏封装，导致脆弱基类问题。永远把字段设为 private。 如果子类真的需要，提供 protected 的 getter/setter 方法。
+
+建议使用受保护方法。它标志着“内部扩展点”。只允许受信的子类调用，外部类不允许随便调用。
+
+### 5.2 Object：所有类的超类
+
+Object类是Java所有类的始祖，每个类都扩展了Object，但并不需要显式声明。
+
+#### 5.2.1 Object类型的变量
+
+可以使用Object类型的变量引用任何类型的对象，作为一个泛型容器。具体操作时还是要进行相应的强制类型转换。
+
+在Java中，只有**基本类型（primitive type）**不是对象，例如，数值、字符和布尔类型的值都不是对象。
+
+所有的数组类型（不管是对象数组还是基本类型的数组）都扩展了Object类的类类型。
+
+#### 5.2.2 equals方法
+
+Object类中的equals方法用于检测一个对象是否等于另外一个对象。而Object类中实现的equals方法 只检测两个对象是否为同一个对象（引用相等）。要比较“值”是否相等（逻辑相等），需要子类自行重写 equals 方法。
+
+#### 5.2.3 相等测试与继承
+
+~~叽里呱啦说啥呢~~
+
+Java语言规范要求equals方法具有下述性质。
+
+1.自反性：对于任何非null引用x，x.equals(x)应该返回 true。
+2.对称性：对于任何引用x和y。当且仅当y.equals(x)返回 true时，x.equals(y)返回 true。
+3.传递性：对于任何引用x、y和z，如果x.equals(y)返回 true, y.equals(z)返回 true，则x.equals(z)也应该返回 true。
+4.一致性：如果x和y引用的对象没有发生变化，则反复调用x.equals(y)应该返回同样的结果。
+5.对于任意非null引用x，x.equals(null)应该返回 false。
+
+- 如果子类可能有自己的相等性概念，则对称性需求强制使用getClass检测。
+- 如果由超类决定相等性概念，那么可以使用instanceof检测，这样不同子类的对象也可能相等。
+
+```java
+@Override
+public boolean equals(Object otherObject) { // 注意：参数必须是 Object，不能是 Employee！
+    // 1. 自己跟自己比（性能优化）
+    if (this == otherObject) return true;
+    
+    // 2. 防 null
+    if (otherObject == null) return false;
+    
+    // 3. 关键抉择：类检测（此处以“严格模式”为例）
+    if (getClass() != otherObject.getClass()) return false;
+    
+    // 4. 强制转换
+    Employee other = (Employee) otherObject;
+    
+    // 5. 比较字段（使用 Objects.equals 防 null）
+    return Objects.equals(name, other.name)
+        && salary == other.salary
+        && Objects.equals(hireDay, other.hireDay);
+}
+```
+
+总结：日常开发中，99% 的普通 JavaBean（数据类）建议使用 getClass 严格模式；只有当明确所有子类都没有额外关键字段时，才考虑 instanceof。
+
+#### 5.2.4 hashCode方法
+
+**散列码（hash code）**是由对象导出的一个整型值。hashCode方法定义在Object类中，默认由对象的内容地址得出。
+
+> 如果 x.equals(y) 返回 true，那么 x.hashCode() 必须等于 y.hashCode()。
+
+所以，如果我们重写了equals方法，则必须同步重写hashCode方法。可以以调用Objects.hash并提供所有值作为参数。这个方法会对各个参数调用0bjects.hashCode,并组合这些散列值。
+
+```java
+public int hashcCode()
+{
+    return Objects.hash(name, salary, hireDay);
+}
+```
+
+#### 5.2.5 toString方法
+
+Object类有一个`toString`方法，默认为`类名@内存地址`，没有业务信息。所以我们基本都需要重写toString方法打印具体字段值，方便日志打印和调试。
+
+```java
+@Override
+public String toString() {
+    return getClass().getName() + "[name=" + name 
+        + ",salary=" + salary 
+        + ",hireDay=" + hireDay + "]";
+}
+```
+
+对于数组和多维数组，则可以使用静态方法`Arrays.toString`和`Arrays.deepToString`。
+
+```java
+int[] luckyNumbers ={2,3,5,7,11,13};
+String s= "" + luckyNumbers; // [I@1a46e30 前缀[I表示这是一个整型数组
+s = Arrays.toString(luckyNumbers); // [2,3,5,7,11,13]
+```
+
+### 5.3 泛型数组列表
+
+ArrayList类与数组类似，但在添加或删除元素时，它能够自动地调整容量，而不需要为此额外编写代码。
+
+ArrayList是一个有**类型参数（type parameter）**的**泛型类（generic class）**。为了指定数组列表保存的元素对象的类型，需要用一对尖括号将类名括起来追加到ArrayList 后面，例如`ArrayList<Employee>`。
+
+#### 5.3.1 声明数组列表
+
+```java
+// 标准写法
+ArrayList<Employee> staff = new ArrayList<Employee>();
+
+// 可以省略右边类型参数
+ArrayList<Employees> staff = new ArrayList<>();
+
+// Java10+，可以使用var简化
+var staff= new ArrayList<Employee>();
+```
+
+使用`add`方法添加元素，`size`获取大小。
+
+使用`ensureCapacity`方法设置容量，或者初始化时直接构造器传参。超出容量时会自动扩容，创建更大容量的数组并拷贝元素。所以已知大小的情况下预设容量可以减小开销。
+
+确认数组大小不再改变后，可以使用`trimToSize`方法回收多余的存储空间。
+
+```java
+staff.add(new Employee("Harry Hacker",...));
+staff.add(new Employee("Tony Tester",...));
+
+staff.size();
+
+staff.ensureCapacity(100);
+
+ArrayList<Employee staff = new ArrayList<>(100);
+
+staff.trimToSize(2);
+```
+
+> C++的vector模板重载了[]操作符以便于访问元素。由于Java没有操作符重载，
+所以必须调用显式的方法。
+> 对于赋值操作a=b，C++的vector是按值复制。Java的ArrayList则是让两个变量引用同一个数组列表。
+
+#### 5.3.2 访问数组列表元素
+
+ArrayList不能使用ArrayList\[i\]，只能通过get/set方法访问和修改元素。
+
+```java
+staff.set(i,harry);
+Employee e = staff.get(i);
+```
+
+一种可行的方法是使用ArrayList添加元素，然后使用`toArray`方法转换成常规数组进行操作。
+
+```java
+var list = new ArrayList<X>();
+while(...)
+{ 
+    X=...;
+    list.add(x);
+}
+
+var a = new X[list.size()];
+list.toArray(a);
+```
+
+可以在数组中间添加和删除元素，但会移动操作位置之后的所有元素，所以在数组过大时不推荐使用。
+
+```java
+int n = staff.size()/2;
+staff.add(n, e);
+
+Employee e = staff.remove(n);
+```
+
+可以使用`for each`循环遍历数组列表的内容：
+
+```java
+for(Employee e : staff)
+    do something with e
+
+// 等价于
+for(int i=0; i< staff.size(); i++)
+{
+    Employee e = staff.get(i);
+    do something with e
+}
+```
+
+#### 5.3.3 类型化与原始数组列表的兼容性
+
+介绍与无泛型的ArrayList（即Object类型）如何兼容，写新代码不用考虑。
+
+### 5.4 对象包装器与自动装箱
+
+所有的基本类型都有一个与之对应的类。通常，这些类称为包装器(wrapper)。
+
+包装器类是不可变的，即一旦构造了包装器，就不允许更改包装在其中的值。同时，包装器类还是final,因此不能派生它们的子类。
+
+数组的类型参数不允许是基本类型，这时就可以用到包装器类。
+
+> 由于每个值分别包装在一个对象中，所以`ArrayList<Integer>`的效率远远低于`int[]`数组。因此，只有当程序员操作的方便性比执行效率更重要的时候，才会考虑对较小的集合使用这种构造。
+
+可以直接向`ArrayList<Integer>`中添加int类型元素，int值会被自动转换为Integer类，这种转换称为**自动装箱（autoboxing）**。反过来，将一个Integer对象赋给一个int值时，将会**自动拆箱（unboxed）**。
+
+```java
+var list = new ArrayList<Integer>();
+
+list.add(3);
+// 等价于
+list.add(Integer.valueof(3));
+
+int n =list.get(i);
+// 等价于
+int n =list.get(i).intValue();
+```
+
+- 自动装箱和自动拆箱甚至也适用于算术表达式。但对于`==`，由于包装器是类，所以比较时将比较内存地址。
+- 包装器类可能为null，自动拆箱就可能抛`NullPointerException`异常。
+- 一个表达式中混用Interger和Double类型时，Interger将拆箱转换为double再装箱为Double。
+
+```java
+Integer a = 1000;
+Integer b= 1000;
+if(a==b)... // 可能为false
+
+Integer n= null;
+System。out.println(2*n); // throws NullPointerException
+
+Integer n=1;
+Double x= 2.0;
+System.out.println(true?n:x); // prints 1.0
+```
+
+### 5.5 参数个数可变的方法
+
+参数个数可变的方法有时也被称为**变参（varargs）方法**。 省略号`...`表明这个方法可以接收任意数量的对象
+
+```java
+public static double max(double... values){
+    double largest = Double.NEGATIVE_INFINITY;
+    for (double v:values) if (v> largest) largest = v;
+    return largest;
+}
+```
+
+### 5.6 抽象类
+
+如果用`abstract`关键字声明方法，则这个方法只需声明不需要具体实现，这样的方法被称为**抽象方法**。包含抽象方法的类也必须用`abstract`声明为**抽象类**。除了抽象方法之外，抽象类还可以包含字段和具体方法。即使不含抽象方法，也可以将类声明抽象类。
+
+抽象方法相当于子类中实现的具体方法的占位符。扩展一个抽象类时，可以有两种选择。一种是在子类中保留抽象类中的部分或所有抽象方法仍未定义，这样就必须将子类也标记为抽象类；另一种做法是定义全部方法，这样一来，子类就不再是抽象的。
+
+抽象类不能实例化。可以创建一个抽象类的**对象变量（object variable）**,但是这样一个变量只能引用非抽象子类的对象。
+
+```java
+public abstract class Person
+{
+   public abstract String getDescription();
+   private String name;
+
+   public Person(String name) { this.name = name; }
+   public String getName() { return name; }
+}
+
+var people = new Person[2];
+
+// fill the people array with Student and Employee objects
+people[0] = new Employee("Harry Hacker", 50000, 1989, 10, 1);
+people[1] = new Student("Maria Morris", "computer science");
+
+// print out names and descriptions of all Person objects
+for (Person p : people)
+    System.out.println(p.getName() + ", " + p.getDescription());
+
+```
+
+由于不可能构造抽象类Person的对象，所以变量p永远不会引用Person对象，而总是引用一个具体子类（如 Employee或Student）的对象。这些对象中都定义了getDescription方法。
+
+如果省略Person超类中的抽象方法，而仅在Employee和Student子类中定义getDescription方法，就不能在变量p上调用getDescription方法了。编译器只允许调用在类中声明的方法。
+
+### 5.7 枚举类
+
+枚举类在定义时就创建好了对应的实例，不能构造新的对象，所以可以直接用`==`比较。
+
+可以为枚举类添加构造器、方法和字段。枚举的构造器总是私有的，可以省略`private`修饰符。
+
+所有的枚举类都是抽象类`Enum`的子类。其中`toString`方法可以返回枚举常量名。逆方法是`valueOf`。
+
+每个枚举类型都有一个静态的`values`方法，它将返回一个包含全部枚举值的数组。
+
+`ordinal`方法返回一个枚举常量在enum声明中的位置，位置从0开始计数。例
+
+```java
+
+public enum Size { SMALL, MEDIUM, LARGE, EXTRA_LARGE }
+
+public enum Size{
+    SMALL("S"),MEDIUM("M"),LARGE("L"),EXTRA_LARGE("XL");
+    
+    // automatically private
+    Size(String abbreviation) { this.abbreviation = abbreviation; }
+    public String getAbbreviation() { return abbreviation; }
+    
+    private String abbreviation;
+}
+
+String str = Size.SMALL.toString(); // "SMALL"
+Size s= Enum.valueOf(Size.class,"SMALL"); // Size.SMALL
+Size[] values = Size.values(); // [SMALL, MEDIUM, LARGE, EXTRA_LARGE]
+int index = Size.MEDIUM.ordinal() // 1
+```
+
+### 5.8 密封类
+
+可以通过`sealed`关键字将类声明为**密封类（sealed class）**。密封类可以控制哪些类可以继承它。
+
+```java
+public abstract sealed class JSONValue
+    permits JSONArray,JSONNumber,JSONString,JSONBoolean,JSONObject,JSONNull
+{
+    ...
+}
+```
+
+一个密封类允许的子类必须是可访问的。它们不能是嵌套在另一个类中的私有类，也不能是位于另一个包中的包可见的类。
+
+密封类可以不加`permits`子句。这样一来，它的所有直接子类都必须在同一个文件中声明。
+
+使用密封类的一个重要原因是编译时检查。
+
+```java
+public String type()
+return switch(this)
+{
+    case JSONArray j->"array";
+    case JSONNumber j->"number";
+    case JSONString j->"string";
+    case JSONBoolean j->"boolean";
+    case JSONObject j->"object";
+    case JSONNull j->"null";
+    // No default needed here
+    };
+}
+```
+
+密封类的子类必须指定它是sealed、final，还是允许继续派生子类。对于最后一种情况，必须声明为non-sealed。
+
+### 5.9 反射
+
+**反射库（reflection library）**提供了一个丰富且精巧的工具集，可以用来编写动态操纵Java代码的程序。能够分析类能力的程序称为**可反射（reflective）**。可以用于：
+
+- 在运行时分析类的能力。
+- 在运行时检查对象，例如，编写一个适用于所有类的toString方法。
+- 实现泛型数组操作代码。
+- 利用Method 对象，这个对象很像C++中的函数指针。
+
+TODO：暂略。
+
+### 5.10 继承的设计技巧
+
+1. 将公共操作和字段放在超类中。
+2. 不要使用受保护的字段。
+3. 使用继承实现“1s-a”关系。
+4. 除非所有继承的方法都有意义，否则不要使用继承。
+5. 覆盖方法时，不要改变预期的行为。
+6. 使用多态，而不要使用类型信息。
+7. 不要滥用反射。
 
 ## 总结
 
