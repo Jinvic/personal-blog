@@ -1711,6 +1711,7 @@ class Employee
     salary = 0;
     }
 }
+```
 
 如果类的静态字段需要很复杂的初始化代码，那么可以使用静态的初始化块。
 
@@ -2851,6 +2852,783 @@ TODO：暂略。
 5. 覆盖方法时，不要改变预期的行为。
 6. 使用多态，而不要使用类型信息。
 7. 不要滥用反射。
+
+## 第6章 接口、lambda表达式和内部类
+
+学lambda表达式和方法引用，感觉Java就是被“一切皆对象”的教条困住了，函数始终只能作为二等公民，导致每次只能写一大堆样板代码去把需要的函数逻辑包装到类里面。又嫌弃这么写太麻烦，就生造一堆概念和语法糖去简化编程范式同时匹配旧有的对象逻辑。写法看上去现代多了但底层编译器还是那一套，和个`#define`差不多。
+
+### 6.1 接口
+
+#### 6.1.1 接口的概念
+
+**接口（interface）**用来描述类应该做什么,而不指定它们具体应该如何做。一个类可以**实现（implement）**一个或多个接口。
+
+```java
+public interface Comparable<T>
+{
+    int compareTo(T other); // parameter has type T
+}
+```
+
+任何实现Comparable接口的类都需要包含一个compareTo方法，接受一个Object参数，并返回一个整数。否
+则，这个类也应当是抽象的，不能构造这个类的对象。调用x.compareTo(y)的时候，当x小于y时，返回一个负数；当x等于y时，返回0；否则返回一个正数。
+
+为了让类实现一个接口，需要完成下面两个步骤：
+
+1.将类声明为实现给定的接口。
+2.对接口中的所有方法提供定义。
+
+要声明一个类实现某个接口，需要使用关键字`implements`。
+
+```java
+public class Employee implements Comparable<Employee>
+{
+   private String name;
+   private double salary;
+
+   /**
+    * Compares employees by salary
+    * @param other another Employee object
+    * @return a negative value if this employee has a lower salary than
+    * otherObject, 0 if the salaries are the same, a positive value otherwise
+    */
+   public int compareTo(Employee other)
+   {
+      return Double.compare(salary, other.salary);
+   }
+}
+```
+
+#### 6.1.2 接口的属性
+
+接口不是类。具体来说，不能使用new操作符实例化。但可以声明接口变量，引用实现了这个接口的类对象。
+
+```java
+x = new Comparable(...); // ERROR
+
+Comparable x; // 0K
+
+x = new Employee(...);// 0K provided Employee implements Comparable
+```
+
+和类的继承一样，接口也可以继承接口。接口不能包含实例字段，但可以包含常量。
+
+```java
+public interface Moveable
+{
+    void move(double x, double y);
+}
+
+public interface Powered extends Moveable
+{
+    double milesPerGallon();
+    double SPEED_LINIT = 95; // a public static final constant
+}
+```
+
+尽管每个类只能有一个超类，但可以实现多个接口。可以使用逗号将想要实现的各个接口分隔开。
+
+```java
+class Employee implements Cloneable, Comparable
+```
+
+接口可以是密封的（sealed）。与密封类一样，直接子类型（可以是类或接口）必须在permits子句中声明，或者要放在同一个源文件中。
+
+#### 6.1.3 接口与抽象类
+
+每个类只能扩展一个类，但每个类可以实现任意多个接口。Java刻意舍弃了*多重继承的复杂性*，才必须提供接口这种机制，让类在单继承的限制下，依然能拥有多种能力。
+
+- 抽象类：适合定义“是什么”（is-a），并提供一些可以被子类复用的代码。
+- 接口：适合定义“能做什么”（can-do），提供纯粹的行为契约。
+
+Java 8 允许接口有 default 方法和 static 方法（接口也可以提供实现了）。这让接口在某些场景下像“轻量级的抽象类”。但接口依然不能有实例字段，所以它永远无法完全取代抽象类。
+
+#### 6.1.4 静态和私有方法
+
+在Java 8中，允许在接口中增加静态方法。这似乎有违于将接口作为抽象规范的初衷。通常的做法都是将静态方法放在伴随类中。如标准库中的Collection/Collections或Path/Paths。在Java 11中，Path接口提供了等价的方法，Paths类就不再是必要的了。
+
+```java
+public interface Path
+{
+    public static Path of(URI uri){...}
+    public static Path of(String first, String⋯ more){...}
+}
+```
+
+在Java 9中，接口中的方法可以是private方法。private方法可以是静态方法或实例方法。由于私有方法只能在接口本身的方法中使用，所以它们的用途很有限，只是作为接口中其他方法的辅助方法。
+
+#### 6.1.5 默认方法
+
+可以为任何接口方法提供一个*默认*实现，必须用`default`修饰符标记该方法。
+
+```java
+public interface Comparable<T>
+{
+    default int compareTo(T other){ return 0;}
+    // by default, all elements are the same
+}
+```
+
+比较常见的用法就是直接抛错该方法未实现。此外，默认方法也可以调用其他方法。这样就可以把公共逻辑提到上层，不需要在子类中重复实现。
+
+```java
+public interface Iterators{
+    boolean hasNext();
+    E next();
+    default void remove(){ throw new UnsupportedoperationException("remove");}
+    // 如果是只读迭代器，不需要实现remove方法。
+}
+
+public interface Collection
+{
+    int size();// an abstract method
+    default boolean isEmpty(){ return size()==0;}
+    // 不需要重复实现isEmpty方法。
+}
+```
+
+默认方法的一个重要用法是**接口演化（interface evolution）**。当接口新增方法时实现为默认方法，避免未实现该方法的旧代码编译失败，保证**源代码兼容（source compatible）**。
+
+#### 6.1.6 解决默认方法冲突
+
+1. 超类优先。如果一个类的继承超类和实现接口有着相同方法，则会使用超类方法而忽略接口默认方法。
+2. 接口冲突。如果一个类实现的多个接口有相同的方法，且其中至少一个为默认方法，则必须显式重写该方法来解决二义性避免冲突。
+
+```java
+interface Person
+{
+    default String getName() { return "";};
+}
+
+interface Named
+{
+    default String getName(){ return getClass().getName()+"_"+hashCode();}
+    // String getName(); 
+    // Person.getName是默认方法而Named.getName不是默认方法时，实现类也必须重写。
+}
+
+class Student implements Person, Named
+{
+    public String getName(){ return Person.super.getName();}
+}
+```
+
+#### 6.1.7 接口与回调
+
+**回调（callback）**是一种常见的程序设计模式。在这种模式中，可以指定某个特定事件发生时应该采取的动作。
+
+```java
+public interface ActionListener
+{
+    void actionPerformed(ActionEvent event);
+}
+
+class TimePrinter implements ActionListener
+{
+    public void actionPerformed(ActionEvent event)
+    {
+        System.out.println("At the tone, the time is"
+            + Instant.ofEpochMilli(event.getWhen()));
+        Toolkit.getDefaultToolkit().beep();
+    }
+}
+
+var listener = new TimePrinter();
+var timer = new Timer(1000, listener);
+timer.start();
+```
+
+#### 6.1.8 Comparator接口
+
+Arrays.sort可以排序对象数组，前提是对象类实现了Comparable接口，即实现了compareTo方法。
+
+当是不方便直接修改compareTo方法时，可以传入一个**比较器（comparator）**作为参数，自定义比较方法。
+
+```java
+public interface Comparator<T>
+{
+    int compare(T first, T second);
+}
+
+class LengthComparator implements Comparator<String>
+{
+    public int compare(String first, String second)
+    {
+        return first.length() - second.length();
+    }
+}
+
+var comp = new LengthComparator();
+if(comp.compare(words[i],words[j])>0) ...
+
+String[] friends ={"Peter","Paul","Mary" };
+Arrays.sort(friends, new LengthComparator());
+```
+
+#### 6.1.9 对象克隆
+
+```java
+var original = new Employee("John Public",50000);
+Employee copy = original;
+Copy.raiseSalary(10); // oops-also changed original
+
+mployee copy = original.clone();
+copy.raiseSalary(10); // 0K--original unchanged
+```
+
+`clone`方法是Object的一个protected方法，将逐个字段进行拷贝。而对象字段的值为引用，对其拷贝会得到相同子对象的另一个引用。即默认的克隆操作是**浅拷贝**，并没有克隆对象中引用的其他对象。
+
+果原对象和浅克隆对象共享的子对象是不可变的，那么这种共享就是安全的。即该子对象属于不可变类，或者器生命周期中不会被变更或引用。但通常子对象都是可变的，必须重新定义clone方法实现**深拷贝（deep copy）**，克隆所有子对象。
+
+```java
+public class Employee implements Cloneable
+{
+   private String name;
+   private double salary;
+   private Date hireDay;
+
+   public Employee clone() throws CloneNotSupportedException
+   {
+      // call Object.clone()
+      Employee cloned = (Employee) super.clone();
+
+      // clone mutable fields
+      cloned.hireDay = (Date) hireDay.clone();
+
+      return cloned;
+   }
+}
+```
+
+所有数组类型都有一个公共的 clone方法，而不是受保护的。可以用这个方法建立一个新数组，包含原数组所有元素的副本。
+
+```java
+int[] luckyNumbers ={2,3,5,7,11,13};
+int[] cloned = luckyNumbers.clone();
+cloned[5] = 12; // doesn't change luckyNumbers[5]
+```
+
+### 6.2 lambda表达式
+
+#### 6.2.1 为什么引入lambda表达式
+
+lambda表达式是一个可传递的代码块，可以在以后执行一次或多次。Java是一种面向对象语言，所以必须构造一个对象，这个对象的类要有一个方法包含所需的代码。导致我们只需要某段逻辑时常常需要专门定义一个类去承接代码块。
+
+```java
+class Worker implements ActionListener
+{
+    public void actionPerformed(ActionEvent event)
+    {
+        // do some work
+    }
+}
+
+class LengthComparator implements Comparator<String>
+{
+    public int compare(String first, String second)
+    {
+        return first.length()·second.Length(); 
+    }
+?
+Arrays.sort(strings, new LengthComparator());
+```
+
+#### 6.2.2 lambda表达式的语法
+
+lambda表达式就是一个代码块，以及必须传入代码的所有变量的规范。
+
+- lambda表达式包括参数，箭头（->）以及一个表达式。
+- 如果代码要完成的计算无法放在一个表达式中，就可以像写方法一样，把这些代码放在{}中，并包含显式的 return语句。
+- 即使lambda表达式没有参数，仍然要提供空括号，就像无参数方法一样。
+- 如果可以推导出一个lambda表达式的参数类型，则可以忽略其类型。
+- 如果方法只有一个参数，而且这个参数的类型可以推导得出，那么甚至还可以省略小括号。
+- 无须指定lambda表达式的返回类型。lambda表达式的返回类型总是会由上下文推导得出。
+- 可以使用var指示一个推导的类型。这不常见。发明这个语法是为了关联注解。
+
+```java
+var planets = new String[] { "Mercury", "Venus", "Earth", "Mars", 
+    "Jupiter", "Saturn", "Uranus", "Neptune" };
+System.out.println(Arrays.toString(planets));
+System.out.println("Sorted by length:");
+Arrays.sort(planets, (first, second) -> first.length() - second.length());
+System.out.println(Arrays.toString(planets));
+    
+var timer = new Timer(1000, event ->
+    System.out.println("The time is " + new Date()));
+timer.start();   
+```
+
+#### 6.2.3 函数式接口
+
+对于只有一个抽象方法的接口，需要这种接口的对象时，就可以提供一个lambda表达式。这种接口称为**函数式接口（functional interface）**。
+
+lambda表达式可以转换为接口。Java API在java.util.function包中定义了很多非常通用的函数式接口。其中一个接口`BiFunction<T,U,R>`描述了参数类型为T和U而且返回类型为R的函数。可以将对应参数的lambda表达式保存在这个类型的变量中。
+
+```java
+BiFunction<String,String,Integer> comp =
+    (first, second) -> first.Length() - second.length();
+```
+
+不过Arrays.sort方法不接收接收一个BiFunction，所以不能直接用于排序。类似Comparator的接口往往有一个特定的用途，而不只是提供一个有指定参数和返回类型的方法。想要用lambda表达式做某些处理时，还是建议建立一个特定的函数式接口。
+
+java.util.function包中有一个尤其有用的接口`Predicate`，这个接口专门用来传递lambda表达式。例如ArrayList类的removeIf方法：
+
+```java
+public interface Predicate<T>
+{
+    boolean test(T t);
+    // additional default and static methods
+}
+
+list.removeIf(e -> e == null);
+```
+
+另一个有用的函数式接口是`Supplier<T>`，供应者（supplier）没有参数，调用时会生成一个T类型的值，用于实现**懒加载（lazy evaluation）**。
+
+```java
+public interface Supplier<T>
+{
+    T get();
+}
+
+// 无懒加载，必定创建新对象
+LocaLDate hireDay = Objects.requireNonNullElse(day, LocalDate.of(1970,1,1));
+// 有懒加载，仅当day为null是才走另一分支创建新对象
+LocalDate hireDay = Objects.requireNonNulLElseGet(day, () -> LocalDate.of(1970,1,1));
+```
+
+#### 6.2.4 方法引用
+
+有时lambda表达式涉及一个方法，期望直接传递该方法：
+
+```java
+var timer = new Timer(1000, event -> System.out.println(event));
+var timer = new Timer(1000,System.out::println);
+```
+
+System.out::println是一个**方法引用（method reference）**，指示编译器生成一个函数式接口的实例，覆盖这个接口的抽象方法来调用给定的方法。
+
+似于lambda表达式，方法引用也不是一个对象。不过，为一个类型为函数式接口的变量赋值时会生成一个对象。
+
+方法引用要用`::`分隔方法名与对象或类名。
+
+1. `object::instanceMethod`: 等价于lambda表达式。即`System.out::print`等价于`x->System.out::print(x)`。
+2. `Class::instanceMethod`: 第一个参数会成为方法的隐式参数。即`String::compareToIgnoreCase`等价于`(x,y)->x.compareToIgnoreCase(y)`。
+3. `Class::staticMethod`: 所有参数都传递到静态方法。即`Math::pow`等价于`(x,y)->Math.pow(x,y)`。
+
+也可以使用在方法引用中使用this或super参数。
+
+```java
+this::instanceMethod
+super::instanceMethod
+```
+
+#### 6.2.5 构造器引用
+
+构造器引用与方法引用很类似，只不过方法名为new。使用哪个构造器取决于上下文传递的参数列表。
+
+```java
+ArrayList<String> names =...;
+Stream<Person> stream = names.stream().map(Person::new); // Person(String)
+List<Person> people = stream.toList();
+```
+
+可以用数组类型建立构造器引用，此时它的参数为数组长度。例如`int[]:new`等价于`x -> new int[x]`。
+
+Java有一个限制：无法构造泛型类型T的数组。即`new T[n]`将创建为`new Object[n]`。通过stream.ToArray传入构造器引用就可以创建特定类型的数组。
+
+```java
+Person[] people = stream.toArray(Person[]::new);
+```
+
+#### 6.2.6 变量作用域
+
+```java
+public static void repeatMessage(String text, int delay)
+{
+    ActionListener listener = event ->
+        {
+            System.out.println(text);
+            Toolkit.getDefaultToolkit().beep();
+        };
+    new Timer(delay, listener).start();
+}
+
+repeatMessage("Hello",1000);// prints Hello every 1,000 milliseconds
+```
+
+对于如上实例，lambda表达式包含一个外部变量delay，这样的变量被称为**自由变量**。
+
+lambda表达式有3个部分：
+
+1. 一个代码块；
+2. 参数；
+3. *自由变量*的值，这是指非参数而且不在代码中定义的变量。
+
+关于代码块连同自由变量值有一个术语：**闭包（closure）**。在Java中，lambda表达式就是闭包。
+
+Java的lambda表达式中捕获的变量必须是**事实最终变量（effectively final）**。事实最终变量是指，这个变量初始化之后就不会再为它赋新值。
+
+```java
+public static void countDown(int start, int delay)
+{
+    ActionListener listener = event ->
+    {
+        start--; // ERROR:Can't mutate captured variable
+        System.out.println(start);
+    };
+    new Timer(delay,listener).start();
+}
+
+public static void repeat(String text, int count)
+    for(int i=1;i<=count;i++)
+    {
+        ActionListener listener = event ->
+        {
+            System.out.println(i+":"+text);
+            // ERROR:Cannot refer to changing i
+        };
+        new Timer(1000, listener).start();
+    }
+}
+```
+
+lambda表达式的与其所在的代码块有着**相同的作用域**。即声明与局部变量同名的参数或局部变量都不合法。
+
+```java
+Path first = Path.of("/usr/bin");
+Comparator<String> comp =
+(first, second)-> first.Length()-second.Length();
+// ERROR:Variable first already defined
+```
+
+在一个lambda表达式中使用this关键字时，是指创建这个lambda表达式的方法的this参数。即创建lambda表达式的外围类对象。lambda表达式本身并不是一个匿名对象类没有this参数。
+
+#### 6.2.7 处理lambda表达式
+
+使用lambda表达式的重点是**延迟执行（deferred execution）**。例如如下场景：
+
+- 在一个单独的线程中运行代码；
+- 多次运行代码；
+- 在算法的适当位置运行代码（例如，排序中的比较操作）;
+- 发生某种情况时运行代码（如，点击了一个按钮，数据已经到达，等等）;
+- 只在必要时才运行代码。
+
+以重复运行代码为例：
+
+```java
+// no argument
+public static void repeat(int n, Runnable action)
+{
+    for(int i=0;i<n; i++) action.run();
+}
+
+repeat(10,() -> System.out.println("Hello,World!"));
+
+// int argument
+public static void repeat(int n, IntConsumer action)
+{
+    for(int i=0; i<n; i++) action.accept(i);
+}
+
+repeat(10, i -> System.out.println("Countdown:"+(9-i)));
+```
+
+如上使用了Runnable和IntConsumer等函数式接口。更多常用的函数式接口如下表：
+
+![表6-2 常用函数式接口](/post-images/《Java核心技术》阅读笔记/v1ch06_01.png)
+![表6-2 常用函数式接口续](/post-images/《Java核心技术》阅读笔记/v1ch06_02.png)
+![表6-3 基本类型的函数式接口](/post-images/《Java核心技术》阅读笔记/v1ch06_03.png)
+![表6-2 常用函数式接口续](/post-images/《Java核心技术》阅读笔记/v1ch06_04.png)
+
+在定义函数式接口时，可以使用`@functionalInterface`注解进行标记。这不是必须的，但可以让编译器帮你检查，同时更具有可读性。类似`@override`注解。
+
+#### 6.2.8 再谈Comparator
+
+Comparator接口包含很多方便的静态方法来创建比较器。这些方法可以用于lambda表达式或方法引用。
+
+静态comparing方法接受一个“键提取器”函数，它将类型T映射为一个可比较的类型（如String）。对要比较的对象应用这个函数，然后对返回的键完成比较。
+
+```java
+Arrays.sort(people, Comparator.comparing(Person::getName));
+```
+
+可以把比较器与thenComparing方法串起来，来处理比较结果相同的情况。实现多级比较。
+
+```java
+Arrays.sort(people,
+    Comparator.comparing(Person::getLastName)
+    .thenComparing(Person::getFirstName));
+```
+
+以为comparing和 thenComparing方法提取的键指定一个比较器。
+
+```java
+Arrays.sort(people, Comparator.comparing(Person::getName,
+    (s, t) -> Integer.compare(s.Length(),t.length())));
+```
+
+另外，comparing和 thenComparing方法都有变体形式，可以避免int、Long或double值的装箱。
+
+```java
+Arrays.sort(people, Comparator.comparingInt(p->p.getName().Length()));
+```
+
+如果键函数可能返回null,可能就要用到nullsFirst和nullsLast适配器。这些静态方法会修改现有的比较器，从而在遇到null值时不会抛出异常，而是将这个值标记为小于或大于正常值。
+
+nullsFirst方法需要一个比较器，在这里就是比较两个字符串的比较器。natural0rder方法可以为任何实现了Comparable的类建立一个比较器。
+
+静态reverseOrder方法会提供自然顺序的逆序。要让比较器逆序比较，可以使用reversed实例方法。例如 naturalOrder().reversed()等同于 reverseOrder()。
+
+```java
+Arrays.sort(people, Comparator.comparing(Person::getMiddleName,
+    Comparator.nullsFirst(Comparator.naturalOrder())));
+```
+
+### 6.3 内部类
+
+**内部类（inner class）**是定义在另一个类中的类。
+
+- 内部类可以对同一个包中的其他类隐藏。
+- 内部类方法可以访问定义这些方法的作用域中的数据，包括原本私有的数据。
+
+相比c++的嵌套类，Java的内部类的对象会有一个隐式引用，指向实例化这个对象的外部类对象，不需要显式指针。
+
+#### 6.3.1 使用内部类访问对象状态
+
+一个内部类方法可以访问自身的实例字段，也可以访问创建它的外部类对象的实例字段。为此，内部类的对象总有一个隐式引用，指向创建它的外部类对象。
+
+```java
+public class TalkingClock
+{
+    private int interval;
+    private boolean beep;
+    public TalkingClock(int interval, boolean beep){...}
+    public void start(){...}
+
+    public class TimePrinter implements ActionListener
+    {
+        public void actionPerformed(ActionEvent event)
+        {
+            System.out.println("At the tone, the time is "
+                + Instant.ofEpochMilli(event.getwhen()));
+            if(beep)Toolkit.getDefaultToolkit().beep();
+        }
+    }
+}
+```
+
+这个引用在内部类的定义中是不可见的。不过，为了说明这个概念，我们将外部类对象的引用称为outer。于是如上的`if(beep)`等价于`if(outer.beep)`。
+
+外部类的引用在构造器中设置。编译器会修改所有的内部类构造器，添加一个对应外部类引用的参数。例如：
+
+```java
+public TimePrinter(TaLkingCLock clock) // automatically generated code
+    outer = clock;
+}
+```
+
+#### 6.3.2 内部类的特殊语法规则
+
+上一节的outer正规语法为`OuterClass,this`，表示外部类引用；反过来，可以采用`outerObject.new InnerClass(construction parameters)`更加明确地编写内部类对象的构造器。
+
+```java
+public void actionPerformed(ActionEvent event)
+{
+    ...
+    if (TalkingClock.this.beep) Toolkit.getDefaultToolkit().beep();
+}
+
+public void start()
+{
+    ActionListener listener = this.new TimePrinter();
+    var timer = new Timer(interval, listener);
+    timer.start();
+}
+```
+
+外部类的作用域之外，可以通过`OuterClass.InnerClass`引用内部类。
+
+#### 6.3.3 内部类是否有用、必要和安全
+
+内部类将转换为常规的类文件，用$(美元符号)分隔外部类名与内部类名。例如`TalkingClock$TimePrinter.class`。
+
+可以使用`javap`反编译查看内部类定义，需要用单引号包裹类名避免$被当作变量。
+
+```java
+// javap -p 'innerClass.TalkingClock$TimePrinter'
+public class innerClass.TalkingClock$TimePrinter implements java.awt.event.ActionListener {
+  final innerClass.TalkingClock this$0;
+  public innerClass.TalkingClock$TimePrinter(innerClass.TalkingClock);
+  public void actionPerformed(java.awt.event.ActionEvent);
+}
+```
+
+可以看到编译器生成了一个额外的实例字段`this$0`对应外部类的引用。构造器也有一个外部类参数。
+
+#### 6.3.4 局部内部类
+
+在TalkingClock类中TimePrinter内部类只在start方法中创建这个类型的对象时使用了一次。类似这种情况可以在方法中*局部地*定义这个类。
+
+```java
+public void start()
+{
+    class TimePrinter implements ActionListener
+    {
+        public void actionPerformed(ActionEvent event)
+        {
+            System,out.println("At the tone, the time is"
+                + Instant.ofEpochMilli(event.getWhen()));
+            if (beep) Toolkit.getDefaultToolkit().beep();
+        }
+    }
+    var listener = new TimePrinter();
+    var timer = new Timer(interval, listener);
+    timer.start();
+}
+```
+
+声明局部类时不能有访问说明符（即public或private）。局部类的作用域总是限定在声明这个局部类的块中。
+
+#### 6.3.5 由外部方法访问变量
+
+局部类不仅能够访问外部类的字段，还可以访问局部变量。些局部变量必须是*事实最终*变量（effectively final）。
+
+当局部内部类访问局部变量而非外部类字段时。局部变量生命周期结束后仍能正常访问该变量。通过反编译可以发现访问的并不是原变量而是在局部内部类内部创建的一份副本。这就是闭包的**变量捕获（Variable Capture）**机制。
+
+```java
+public void start(int interval, boolean beep) // 方法参数而不是外部类字段
+{
+    class TimePrinter implements ActionListener
+    {
+        public void actionPerformed(ActionEvent event)
+        {
+            System,out.println("At the tone, the time is"
+                + Instant.ofEpochMilli(event.getWhen()));
+            if (beep) Toolkit.getDefaultToolkit().beep();
+        }
+    }
+    var listener = new TimePrinter();
+    var timer = new Timer(interval, listener);
+    timer.start();
+}
+```
+
+```java
+public class innerClass.TalkingClock$TimePrinter implements java.awt.event.ActionListener {
+  final innerClass.TalkingClock this$0;
+  final boolean val$beep;
+  public innerClass.TalkingClock$TimePrinter(innerClass.TalkingClock);
+  public void actionPerformed(java.awt.event.ActionEvent);
+}
+```
+
+反编译可以看到，beep变量的值会拷贝存储在内部类的val$beep字段中。
+
+#### 6.3.6 匿名内部类
+
+```java
+public void start(int interval, boolean beep)
+{
+    var listener = new ActionListener()
+    {
+        public void actionPerformed(ActionEvent event)
+        {
+            System.out.println("At the tone, the time is"
+            + Instant.ofEpochMilli(event.getWhen()));
+            if(beep) Toolkit.getDefaultToolkit().beep();
+        }
+    };
+    var timer = new Timer(interval, listener);
+    timer.start();
+}
+```
+
+如上，当只需要这个类的一个对象时，可以不指定名字直接声明，这样的类被称为**匿名内部类（onymous inner class）**。
+
+```java
+new SuperType(construction parameters)
+{
+    // inner class methods and data
+}
+```
+
+在这里，SuperType可以是接口，内部类要实现这个接口。SuperType也可以是一个类，内部类要扩展这个类。
+
+由于构造器的名字必须与类名相同，而匿名内部类没有类名，所以匿名内部类不能有构造器。构造参数将传递给超类（superclass）构造器。匿名类不能有构造器，但可以提供一个对象初始化块。
+
+```java
+var queen = new Person("Mary");
+// a Person object
+var count = new Person("Dracula"){...};
+// an object of an inner class extending Person
+
+var count = new Person("Dracula")
+{
+    {initialization} // initialization block
+};
+```
+
+#### 6.3.7 静态内部类
+
+有时候，使用内部类只是为了把一个类隐藏在另外一个类的内部，并不需要内部类有外部类对象的一个引用。为此，可以将内部类声明为static，这样就不会生成那个引用。
+
+```java
+class ArrayAlg
+{
+   public static class Pair
+   {
+      private double first;
+      private double second;
+
+      public Pair(double f, double s)
+      {
+         first = f;
+         second = s;
+      }
+
+      public double getFirst() {return first;}
+      public double getSecond() {return second;}
+   }
+
+   public static Pair minmax(double[] values)
+   {
+      double min = Double.POSITIVE_INFINITY;
+      double max = Double.NEGATIVE_INFINITY;
+      for (double v : values)
+      {
+         if (min > v) min = v;
+         if (max < v) max = v;
+      }
+      return new Pair(min, max);
+   }
+}
+
+public class StaticInnerClassTest
+{
+   public static void main(String[] args)
+   {
+      var values = new double[20];
+      for (int i = 0; i < values.length; i++)
+         values[i] = 100 * Math.random();
+      ArrayAlg.Pair p = ArrayAlg.minmax(values);
+      System.out.println("min = " + p.getFirst());
+      System.out.println("max = " + p.getSecond());
+   }
+}
+```
+
+一方面，使用内部类`ArrayAlg.Pair`相比直接定义一个`Pair`类更不容易混淆。另一方面，对于如上示例，由于Pair类在静态方法中使用，所以必须声明为静态类，否则编译器将报错没有可用的ArrayAlg类型隐式对象来初始化内部类对象。
+
+态内部类可以有静态字段和方法。接口中声明的内部类自动是static和public。声明的接口、记录和枚举都自动为static。
+
+### 6.4 服务加载器
+
+TODO 不是很懂，先略过。
+
+### 6.5 代理
+
+TODO 不是很懂，先略过。
 
 ## 总结
 
