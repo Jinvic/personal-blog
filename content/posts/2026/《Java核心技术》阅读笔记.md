@@ -1,5 +1,7 @@
 ---
 title: 《Java核心技术》阅读笔记
+createdate: '2026-06-05T13:35:56+08:00'
+updatedate: '2026-08-21T13:35:56+08:00'
 date: '2026-06-05T13:35:56+08:00'
 tags: 
 - Java
@@ -3629,6 +3631,771 @@ TODO 不是很懂，先略过。
 ### 6.5 代理
 
 TODO 不是很懂，先略过。
+
+## 第7章 异常、断言和日志
+
+### 7.1 处理错误
+
+#### 7.1.1 异常分类
+
+在Java程序设计语言中，异常对象都是派生于Throwable类的一个类的实例。如果Java中内置的异常类不能满足需求，用户还可以创建自己的异常类。
+
+所有的异常都是由Throwable继承而来，但在这个层次结构中，下一层立即分为两个分支：Error和Exception。
+
+Error类层次结构描述了Java运行时系统的内部错误和资源耗尽问题。不应该抛出这种类型的对象。这种情况很少出现。
+
+重点关注Exception层次结构，又分为两个分支：一个分支派生于`RuntimeException`；另一个分支包括其他异常，不继承这个类。由编程错误导致的异常属于RuntimeException，否则属于其他异常。
+
+Java语言规范将派生于Error类或RuntimeException类的所有异常称为**非检查型（unchecked）**异常，所有其他异常称为**检查型（checked）**异常。编译器将检查是否为所有的检查型异常提供了异常处理器。
+
+#### 7.1.2 声明检查型异常
+
+下面4种情况时会抛出异常：
+
+- 调用了一个抛出检查型异常的方法，例如，FileInputStream构造器会抛出异常FileNotFoundException。即别人抛出异常。
+- 检测到一个错误，并且利用throw语句抛出一个检查型异常。即自己抛出异常。
+- 程序出现错误，例如，`a[-1]=0`会抛出一个非检查型异常ArrayIndexOutofBoundsException。即程序抛出异常。
+- Java虚拟机或运行时库出现内部错误。
+
+如果出现前两种情况，则必须告诉使用这个方法的程序员有可能抛出异常。如果没有处理器捕获这个异常，当前的执行线程就会终止。
+
+通过方法首部的**异常规范（exception specification）**声明这个方法可能抛出异常。如果一个方法有可能抛出多个检查型异常类型，那么就必须在方法的首部列出所有的异常类。每个异常类之间用逗号隔开。
+
+```java
+class MyAnimation
+{
+    public Image LoadImage(String s) throws FileNotFoundException, EOFException
+    {
+        ...
+    }
+}
+```
+
+不需要声明Java的内部错误，即从 Error继承的异常。任何代码都有可能抛出那些异常，而我们对此完全无法控制。
+
+不应该声明从RuntimeException继承的那些非检查型异常。这些运行时错误完全在我们的控制之中。应该多花时间修正这些错误，而不只是声明这些错误有可能发生。
+
+总之，一个方法必须声明所有可能抛出的检查型异常，而非检查型异常要么在你的控制之外（Error）,要么是由从一开始就应该避免的情况导致的（RuntimeException）。如果方法没有声明所有可能发生的检查型异常，编译器就会发出一个错误消息。
+
+> 如果在子类中覆盖了超类的一个方法，子类方法中声明的检查型异常不能比超类方法中声明的异常更宽泛。如果超类方法没有抛出任何检查型异常，子类也不能抛出任何检查型异常。
+
+如果类中的一个方法声明它会抛出一个异常，而这个异常是某个特定类的实例，那么这个方法抛出的异常可能属于这个类，也可能属于这个类的任意一个子类。
+
+#### 7.1.3 如何抛出异常
+
+如果一个已有的异常类能够满足的要求，抛出这个异常非常容易。
+
+1. 找到一个合适的异常类。
+2. 创建这个类的一个对象。
+3. 将对象抛出。
+
+```java
+String readData(Scanner in) throws EOFException
+{
+    while(...)
+    {
+        if(!in.hasNext())// EOF encountered
+        {
+            if(n<len)
+            {
+                String gripe = "Content-length:"+len+",Received:"+n;
+                throw new EOFException(gripe);
+            }
+        }
+    }
+    return s;
+}
+```
+
+> Java中，只能抛出 Throwable子类的对象，而在C++中，却可以抛出任何类型的值。
+
+#### 7.1.4 创建异常类
+
+对于任何标准异常类都无法描述清楚的问题，应该创建自己的异常类。即定义一个派生于Exception
+的类，或者派生于Exception的某个子类。习惯做法是，自定义的这个类应该包含两个构造器，一个是默认的构造器，另一个是包含详细描述信息的构造器。后者可以通过超类的toString返回包含这个详细信息的字符串。
+
+```java
+class FileFormatException extends IOException
+{
+    public FileFormatException(){}
+    public FileFormatException(String gripe)
+    {
+        super(gripe);
+    }
+}
+```
+
+```java
+String readData(Scanner in) throws FileFormatException
+{
+    ...
+    while(...)
+    {
+        if(ch==-1) // E0F encountered
+        {
+            if(n<len)
+                throw new FileFormatException();
+        }
+        ...
+    }
+    return s;
+}
+```
+
+### 7.2 捕获异常
+
+#### 7.2.1 捕获异常概述
+
+如果发生了某个异常，但没有在任何地方捕获这个异常，程序就会终止，并在控制台上打印一个消息，其中包括这个异常的类型和一个栈轨迹。
+
+要想捕获一个异常，需要建立 try/catch 语句块。
+
+```java
+try
+{
+    // code
+    // more code
+    // more code
+}
+catch(ExceptionType e)
+{
+    // handler for this type
+}
+```
+
+如果try语句块中的任何代码抛出了catch子句中指定的一个异常类，程序将跳过try语句块的其余代码，并执行catch字句中的处理器代码。如果try语句块中的代码没有抛出任何异常，那么程序将跳过catch子句。
+
+如果方法中的任何代码抛出了一个异常，但不是catch子句中指定的异常类型，那么这个方法会立即退出，由方法的调用者处理异常。
+
+编译器严格地执行throws说明符。如果调用了一个抛出检查型异常的方法，就必须处理这个异常，或者继续传递这个异常。一般经验是，要捕获那些知道如何处理的异常，而继续传播那些不知道怎样处理的异常。
+
+#### 7.2.2 捕获多个异常
+
+在一个 try语句块中可以捕获多个异常类型，并对不同类型的异常做出不同的处理。要为每个异常类型使用一个单独的catch子句。
+
+```java
+try
+{ 
+    // code that might throu exceptions
+}
+catch(FileNotFoundException e)
+{
+    // emergency action for missing files
+}
+catch(UnknownHostException e)
+{
+    // emergency action for unknown hosts
+}
+{catch (IOException e)
+    // emergency action for all ther I/O problems
+}
+```
+
+异常对象可能包含有关异常性质的信息。要想获得这个对象的更多信息，可以尝试使用`e.getMessage()`得到详细的错误消息（如果有的话）；或者使用`e.getClass().getName()`得到异常对象的实际类型。
+
+在Java 7中，同一个catch子句中可以捕获多个异常类型。只有当捕获的异常类型彼此之间不存在子类关系时才需要这个特性。
+
+```java
+try
+{
+    // code that might throw exceptions
+}
+catch(FileNotFoundException | UnknownHostException e)
+{
+    // emergency action for missing files and unknown hosts
+}
+catch(IOException e)
+{
+    // emergency action for all other 1/O problems
+}
+```
+
+> 获多个异常时，异常变量隐含为final变量。不能再修改该变量的值。
+
+#### 7.2.3 再次抛出异常与异常链
+
+可以在catch子句中抛出一个异常。
+
+如果是要对原始异常进行包装，相比用错误消息直接构建新异常，可以用`initCause`把原始异常设置为新异常的“原因”；捕获到这个异常时，也可以用`getCause`获取原始异常。这样可以在子系统中抛出高层异常，而不会丢失原始异常的细节信息。
+
+```java
+try
+{
+    // accessthe database
+}
+catch (SQLException original)
+{
+    // directly construct exception
+    // throw new ServletException("database error:"+e.getMessage());
+
+    var e= new ServletException("database error");
+    e.initCause(original);
+    throw e;
+}
+
+Throwable original = caughtException.getCause();
+```
+
+#### 7.2.4 finally 子句
+
+不管是否捕获到异常，finally子句中的代码都会执行。可以用于资源清理。try语句可以只有finally子句，而没有catch子句。
+
+```java
+var in = new FileInputStream(...);
+try
+{
+    // code that might throw exceptions
+}
+catch (IOException e)
+{
+    // show error message
+}
+finally
+{
+    in.close();
+}
+```
+
+#### 7.2.5 try-with-Resources 语句
+
+```java
+// open a resource
+try
+{
+    // work with the resource
+}
+finally
+{
+    // close the resource
+}
+```
+
+对于如上使用资源的try形式，如果资源类实现了AutoCloseable接口，即实现了`void close() throws Exception`方法，则可以使用try-with-resources语句进行简化。try块退出时，会自动调用res.close()。多个资源使用分号分隔。
+
+```java
+// Java 7
+try(Resource res =...)
+{
+    work with res
+}
+
+// Java 9
+
+Resource res =... // res为事实最终变量
+try(res)
+{
+    work with res
+}
+```
+
+#### 7.2.6 分析栈轨迹元素
+
+**栈轨迹（stack trace）**是程序执行过程中某个特定点上所有挂起的方法调用的一个列表。
+
+可以调用Throwable类的`printStackTrace`方法访问栈轨迹的文本描述信息。
+
+```java
+var t = new Throwable();
+var out = new StringWriter();
+t.printStackTrace(new PrintWriter(out));
+String description = out.toString();
+```
+
+一种更灵活的方法是使用StackWalker类，它会生成一个`Stackwalker.StackFrame`实例流，其中每个实例分别描述一个**栈帧（stack frame）**。
+
+```java
+StackWalker walker = StackWalker.getInstance();
+walker.forEach(frame -> analyze frame) // 逐个处理栈帧
+walker.walk(stream -> process stream)  // 直接处理流
+```
+
+`StackWalker.StackFrame`类有一些方法可以得到正在执行的代码行的文件名和行号，以及类对象和方法名。toString方法会生成一个格式化字符串，其中包含所有这些信息。
+
+如下是一个递归阶乘打印栈轨迹的示例：
+
+```java
+public class StackTraceTest
+{
+   public static int factorial(int n)
+   {
+      System.out.println("factorial(" + n + "):");
+      var walker = StackWalker.getInstance();
+      walker.forEach(System.out::println);      
+      int r;
+      if (n <= 1) r = 1;
+      else r = n * factorial(n - 1);
+      System.out.println("return " + r);
+      return r;
+   }
+
+   public static void main(String[] args)
+   {
+      try (var in = new Scanner(System.in))
+      {
+         System.out.print("Enter n: ");
+         int n = in.nextInt();
+         factorial(n);
+      }
+   }
+}
+
+/*
+PS D:\Workspace\Java\corejava12\v1ch07> java stackTrace.StackTraceTest
+Enter n: 3
+factorial(3):
+stackTrace.StackTraceTest.factorial(StackTraceTest.java:21)
+stackTrace.StackTraceTest.main(StackTraceTest.java:35)
+factorial(2):
+stackTrace.StackTraceTest.factorial(StackTraceTest.java:21)
+stackTrace.StackTraceTest.factorial(StackTraceTest.java:24)
+stackTrace.StackTraceTest.main(StackTraceTest.java:35)
+factorial(1):
+stackTrace.StackTraceTest.factorial(StackTraceTest.java:21)
+stackTrace.StackTraceTest.factorial(StackTraceTest.java:24)
+stackTrace.StackTraceTest.factorial(StackTraceTest.java:24)
+stackTrace.StackTraceTest.main(StackTraceTest.java:35)
+return 1
+return 2
+return 6
+*/
+```
+
+### 7.3 使用异常的技巧
+
+1. 异常处理不能代替简单的测试。
+
+    ```java
+    if (!s.empty())s.pop(); // 正确
+
+    try {s.pop} catch (EmptyStackException e) {} // 错误
+    ```
+
+2. 不要过分地细化异常。
+
+    ```java
+    PrintStream out;
+    Stack s;
+
+    // 错误
+    for(i=0;i<100;i++)
+    { 
+        try 
+        { n= s.pop(); }
+        catch(EmptyStackException e)
+        { /* stack was empty*/ }
+
+        try
+        { out.writeInt(n); }
+        catch(IOException e)
+        { /* problem writing to file */ }
+    }
+
+    // 正确
+    try
+    {
+        for (i=0;i<100;i++)
+        {
+            n=s.pop();
+            out.writeInt(n);
+        }
+    }
+    catch(EmptyStackException e)
+    { /* stack was empty*/ }
+    catch(IOException e)
+    { /* problem writing to file */ }
+    ```
+
+3. 合理利用异常层次结构。
+    不要只抛出RuntimeException异常。应该寻找一个适合的子类或创建你自己的异常类。
+    不要只捕获Throwable异常，否则，这会使你的代码很难读、很难维护。
+    考虑检查型异常与非检查型异常的区别。检查型异常本质上开销较大，不要为逻辑错误抛出这些异常。
+
+4. 不要压制异常。
+
+    ```java
+    try
+    {
+        // code that threatens to throw checked exceptions
+    }
+    catch(Exception e)
+    {} // so there
+    ```
+
+    这样做代码可以通过编译，但异常会被忽略。应该适当处理异常。
+
+5. 在检测错误时，“苛刻”要比放任更好。
+
+6. 不要羞于传递异常。
+    更高层的方法通常可以更好地通知用户发生了错误，或者放弃不成功的命令。
+
+7. 使用标准方法报告null指针和越界异常。
+
+    Objects 包含以下方法：
+    - requireNonNull
+    - checkIndex
+    - checkFromToIndex
+    - checkFromIndexSize
+
+8. 不要向最终用户显示栈轨迹。
+    应该将栈轨迹记入日志，以便以后获取，而只向用户显示一个总结消息。
+
+### 7.4 使用断言
+
+#### 7.4.1 断言的概念
+
+**断言（assertion）**机制允许你在测试期间在代码中插入一些检查，而在生产代码中自动删除这些检查。
+
+```java
+assert condition;
+assert condition:expression;
+```
+
+这两个语句都会计算条件（condition）,如果结果为false，则抛出一个`AssertionError`异常。在第二个语句中，表达式（expression）将传入AssertionError对象的构造器，并转换成一个消息字符串。
+
+#### 7.4.2 启用和禁用断言
+
+在默认情况下，断言是禁用的。可以在运行程序时用`-enableassertions`或`-ea`选项启用断言;`-disableassertions`或`-da`选项禁用断言。可以在特定的类或整个包中启用或禁用断言。
+
+```bash
+java -enableassertions MyApp
+java -ea:MyClass -da:com.mycompany.mylib MyApp
+```
+
+不必重新编译程序来启用或禁用断言。启用或禁用断言是**类加载器（class loader）**的功能。禁用断言时，类加载器会去除断言代码，因此，不会降低程序运行的速度。
+
+有些类不是由类加载器加载，而是直接由虚拟机加载。可以使用这些开关有选择地启用或禁用那些类中的断言。
+
+启用和禁用所有断言的-ea和-da开关不能应用于那些没有类加载器的“系统类”。需要使用`-enablesystemassertions`/`-esa`开关启用系统类中的断言。
+
+也可以通过编程控制类加载器的断言状态。
+
+#### 7.4.3 使用断言完成参数检查
+
+```java
+/**
+Sorts the specified range of the specified array in ascending numerical order.
+The range to be sorted extends from fromIndex,inclusive, to toIndex, exclusive.
+@param a the array to be sorted.
+@param fromIndex the index of the first element(inclusive) to be sorted.
+@param toIndex the index of the last element(exclusive) to be sorted.
+@throws IllegalArgumentException if fromIndex > toIndex
+@throws ArrayIndexOutOfBoundsException if fromIndex<θ or toIndex> a.length
+*/
+static void sort(int[] a,int fromIndex, int toIndex)
+```
+
+如上，方法签名中未指定a未null时的行为，可能被理解为传入null时仍能返回。如果期望传入的a不为null，则可以修改注释为`@param a the array to be sorted(must not be null).`，并在方法开头使用`assert a!=null`来限制传入参数。这种约定被称为**前置条件（Precondition）**。
+
+#### 7.4.4 使用断言提供假设文档
+
+```java
+// 注释
+if (i%3==0)
+    ...
+else if(i%3==1)
+    ...
+else //(i%3==2)
+    ...
+
+// 断言
+if (i%3==0)
+    ...
+else if(i%3==1)
+    ...
+else
+{
+    assert i%3==2
+    ...
+}
+```
+
+如上，当需要用注释说明“程序运行到这里时，某个条件一定成立”时，可以用断言替代注释。断言就是“活着的注释”，它既能让阅读代码的人看到当时假设，又能让运行程序的人验证这个假设是否成立。
+
+### 7.5 日志
+
+#### 7.5.1 基本日志
+
+对于简单的日志记录，可以使用**全局日志记录器（global logger）**并调用其info方法：
+
+```java
+Logger.getGlobal().info("File->Open menu item selected");
+// May 10,2013 18:12:15 PM LoggingImageViewer fileOpen
+// INFO: File->Open menu item selected
+```
+
+如果在适当的地方（如main的最前面）调用`Logger.getGlobal().setLevel(Level.OFF);`将会抑制所有日志。
+
+#### 7.5.2 高级日志
+
+可以调用getLogger方法创建或获取一个日志记录器：
+
+```java
+private static final Logger myLogger = Logger.getLogger("com.mycompany.myapp");
+```
+
+通常，有以下7个日志级别。在默认情况下，实际上只记录前3个级别。
+
+- SEVERE
+- WARNING
+- INFO
+- CONFIG
+- FINE
+- FINER
+- FINEST
+
+可以使用`logger.setLevel(Level.XXX);`记录对应级别以及所有更高级别的日志。另外，还可以使用`Level.ALL`开启所有级别的日志记录，或者使用`Level.OFF`关闭所有日志。
+
+所有级别都有日志记录方法，还可以使用log方法并指定级别。
+
+```java
+Logger.warning(message);
+Logger.fine(message);
+
+logger.Log(Level.FINE,message);
+```
+
+默认的日志记录会显示包含日志调用的类和方法的名字（根据调用栈得出）。不过，如果虚拟机对执行过程进行了优化，就可能得不到准确的调用信息。此时，可以使用logp方法获得调用类和方法的确切位置。
+
+```java
+void logp(Level l, String className, String methodName, String message)
+```
+
+有一些用来跟踪执行流的便利方法，这些调用将生成FINER级别而且以字符串ENTRY和RETURN开头的日志记录。
+
+```java
+void entering(String className, String methodName)
+void entering(String className,String methodName, Object param)
+void entering(String className, String methodName, Object[] params)
+void exiting(String className, String methodName)
+void exiting(String className, String methodName,Object result)
+
+// e.g.
+int read(String file, String pattern)
+{
+    logger.entering("com.mycompany.mylib.Reader","read",
+        new Object[]{ file,pattern });
+    // do something
+    logger.exiting("com.mycompany.mylib.Reader","read",count);
+    return count;
+}
+```
+
+#### 7.5.3 修改日志管理器配置
+
+可以通过编辑配置文件来修改日志系统的各个属性。默认的配置文件位于：`jdk/conf/Logging.propertie`。
+
+要想使用另一个配置文件，就要将java.util.logging.config.file属性设置为那个文件的位置，为此要用以下命令启动你的应用程序：`java -Djava.util.Logging.config.file=configFile MainClass`。
+
+要想修改默认的日志级别，需要编辑配置文件。也可以为你自己的日志记录器指定日志级别，即在日志记录器名后面追加后缀.Level。
+
+```yml
+# 默认级别
+.level=INFO
+# 指定日志记录器
+com.mycompany.myapp.Level=FINE
+```
+
+日志记录器并不将消息发送到控制台，那是处理器的任务。处理器也有级别。要想在控制台上看到FINE级别的消息，就需要如下设置：`java.util.Logging.ConsoleHandler.level=FINE`。
+
+日志管理器在虚拟机启动时初始化，也就是在main方法执行前。如果想要定制日志属性，但是没有用`-Djava.util.logging.config.file`命令行选项启动应用，可以在程序中调用`System.setProperty("java.util.Logging.config.file",file)`。不过，这样一来，还必须调用`LogManager.getLogManager().readConfiguration()`重新初始化日志管理器。
+
+在Java9中，可以通过调用`LogManager.getLogManager().updateConfiguration(mapper);`更新日志配置。这样就会从java.util.logging.config.file系统属性指定的位置读取一个新配置。然后应用这个映射器来解析新老配置中所有键的值。映射器是一个`Function<String,BiFunction<String,String, String>>`。它将现有配置中的键映射到替换函数。每个替换函数接收到与键关联的老值和新值（或者，如果没有关联的值则得到null）,生成一个替换，或者如果要在更新中删除这个键则返回 null。
+
+一种很有用的映射机制是合并老配置和新配置，如果一个键在老配置和新配置中都出现，则优先选择新值。这样一个映射器（mapper）就是：`key->((oldvalue, newalue)->newWalue == null?oldvalue:neWalue)`
+
+#### 7.5.4 本地化
+
+本地化的应用程序包含资源包(resource bundle)中的本地特定信息。资源包包括一组映射，分别对应各个本地化环境。
+
+一个程序可以包含多个资源包，例如一个用于菜单，另一个用于日志消息。每个资源包都有一个名字(如"`com.mycompany.Logmessages`")。要想为资源包增加映射，需要对应每个本地化环境提供一个文件。英文消息映射位于`com/mycompany/logmessages_en.properties`文件中，德文消息映射位于`com/mycompany/logmessages_de.properties`文件中。(en和de是语言编码。)可以将这些文件与应用程序的类文件放在一起，以便ResourceBundle类自动找到它们。这些文件都是纯文本文件，包含如下所示的条目：
+
+```yml
+readingFile=Achtung! Datei wird eingelesen
+renamingFile=Datei wird umbenannt
+```
+
+请求一个日志记录器时，可以指定一个资源包.然后，为日志消息指定资源包的键，而不是具体的日志消息字符串。
+
+```java
+Logger Logger = Logger.getLogger(LoggerName, "com,mycompany.Logmessages");
+logger.info("readingFile");
+```
+
+通常需要在本地化的消息中包含一些参数，因此，消息可以包括占位符{θ}、{1}等。例如，要想在日志消息中包含文件名，可以如下使用占位符：
+
+```txt
+Reading file {0}.
+Achtung! Datei {0} wird eingelesen.
+```
+
+然后，通过调用下面的一个方法向占位符传递具体的值：
+
+```java
+Logger.Log(Level.INFO, "readingFile", fileName);
+logger.Log(Level.INFO, "renamingFile", new Object[]{oldName, neuName });
+```
+
+或者，在Java9中，可以在 logrb方法中指定资源包对象(而不是名字):
+
+```java
+Logger.logrb(Level.INFO, bundle, "renamingFile", oldName, newName);
+```
+
+#### 7.5.5 处理器
+
+日志记录器会把记录发送到父处理器，而最终的祖先处理器（名为""）有一个ConsoleHandler，它会将记录输出到System.err流。
+
+与日志记录器一样，处理器也有日志级别。对于一个要记录的日志记录，它的日志级别
+必须高于日志记录器和处理器二者的阈值。日志管理器配置文件将默认的控制台处理器的日
+志级别设置为`java.util.Logging.ConsoleHandler.level=INF`。
+
+可以修改配置文件中默认日志记录级别和处理器级别。或者绕过配置文件自定义处理器。
+
+```java
+Logger logger = Logger.getLogger("com,mycompany.myapp");
+logger.setLevel(Level.FINE);
+logger.setUseParentHandlers(false);
+var handler = new ConsoleHandler();
+handler.setLevel(Level.FINE);
+logger.addHandler(handler);
+```
+
+要想将日志记录发送到其他地方，就要添加其他的处理器。日志API为此提供了两个很有用的处理器，一个是`FileHandler`，可以将记录收集到一个文件中。另一个是`SocketHandler`，将记录发送到指定的主机和端口。
+
+可以通过设置日志管理器配置文件中的不同参数，或者使用另一个构造器，修改文件处理器的默认行为。
+
+![文件处理器配置参数](/post-images/《Java核心技术》阅读笔记/v1ch07_01.png)
+
+![志记录文件模式变量](/post-images/《Java核心技术》阅读笔记/v1ch07_02.png)
+
+还可以通过扩展Handler类或StreamHandler类自定义处理器。如果希望编写更加复杂的流处理器，可以扩展Handler类，并定义publish、flush和close方法。
+
+#### 7.5.6 过滤器
+
+在默认情况下，会根据日志记录的级别进行过滤。每个日志记录器和处理器都可以有一个可选的过滤器来完成额外的过滤。要定义一个过滤器，需要实现Filter接口并定义以下方法：
+
+```java
+boolean isLoggable(LogRecord record)
+```
+
+要想将一个过滤器安装到一个日志记录器或处理器中，只需要调用setFilter方法。注意，一次最多只能有一个过滤器。
+
+#### 7.5.7 格式化器
+
+ConsoleHandler类和FileHandler类可以生成文本和XML格式的日志记录。也可以自定义格式。这需要扩展 Formatter类并覆盖下面这个方法：
+
+```java
+String format(LogRecord record)
+```
+
+这个方法对记录中的消息部分进行格式化，将替换参数并应用本地化处理。
+
+很多文件格式（如XML）需要在已格式化的记录的前后加上一个头部和尾部。为此，要覆盖下面两个方法：
+
+```java
+String getHead(Handler h)
+String getTail(Handler h)
+```
+
+最后，调用setFormatter方法将格式化器安装到处理器中。
+
+#### 7.5.8 日志技巧
+
+1. 对一个简单的应用，选择一个日志记录器。可以把日志记录器命名为与主应用包同名。
+2. 默认的日志配置会把级别等于或高于INFO的所有消息记录到控制台。可以覆盖这个默认配置，但最好安装一个更合适的默认日志处理器。
+3. 所有级别为INF0、WARNING和SEVERE的消息都将显示到控制台上。因此，要记录对程序用户有意义的消息，可以使用这几个级别。对于程序员想要的日志消息，FINE级别是一个很好的选择。
+
+### 7.6 调试技巧
+
+1. 可以用下面的代码打印或记录任意变量的值：
+
+    ```java
+    System out.println("x="+x);
+    Logger.getGlobal().info("x="+x);
+    Logger.getGlobal().info("this="+ this);
+    ```
+
+2. 可以在每一个类中放置一个单独的main方法。这样就可以提供一个**单元测试桩（stub）**,允许你独立地测试类。
+
+    ```java
+    public class MyClass
+    {
+        // methods and fields
+
+        public static void main(String[] args)
+        {
+            test code
+        }
+    }
+    ```
+
+3. JUnit是一个非常流行的单元测试框架，利用它可以很容易地组织测试用例套件。只要对类做了修改，就需要运行测试。一旦发现bug,则要再补充另一个测试用例。
+4. **日志代理（logging proxy）**是一个子类的对象，它可以截获方法调用，将这些调用记人日志，然后调用超类中的方法。
+
+    ```java
+    var generator = new Random()
+    {
+        public double nextDouble()
+        {
+            double result = super.nextDouble();
+            Logger.getGlobal().info("nextDouble:"+ result);
+            return result;
+        }
+    };
+    ```
+
+5. 利用`Throwable`类的`printStackTrace`方法，可以从任意的异常对象获得栈轨迹。
+
+    ```java
+    // 捕获异常时打印
+    try
+    { ... }
+    catch (Throwable t)
+    {
+        t.printStackTrace();
+        throw t;
+    }
+
+    // 直接打印
+    Thread.dumpStack();
+    ```
+
+6. 一般来说，栈轨迹显示在`System.err`上。如果想要记录或显示栈轨迹，可以如下将它捕获到一个字符串中：
+
+    ```java
+    var out = new StringWriter();
+    new Throwable().printStackTrace(new PrintWriter(out));
+    String description = out.toString();
+    ```
+
+7. 将程序错误记入一个文件会很有用。不过，错误会发送到System.err,而不是System.out。
+
+    ```pwsh
+    # 捕获标准输出
+    java MyProgram> output.txt
+    # 捕获错误流
+    java MyProgram 2> errors.txt
+    # 同时捕获两者
+    java MyProgram 1> errors.txt 2>&1
+    ```
+
+8. 在System.err中显示未捕获的异常的栈轨迹并不是一个理想的方法。更好的方法是将这些消息记录到一个文件中。可以用静态方法`Thread.setDefaultUncaughtExceptionHandler`改变未捕获异常的处理器：
+
+    ```java
+    Thread.setDefaultUncaughtExceptionHandler(
+        new Thread.UncaughtExceptionHandler()
+        {
+            public void uncaughtException(Thread t, Throwable e)
+            {
+                // save information in log file
+            };
+        });
+    ```
+
+9. 要想观察类的加载过程，启动Java 虚拟机时可以使用`-verbose`标志。有时候，这对诊断类路径问题会很有帮助。
+10. -Xlint 选项告诉编译器找出常见的代码问题。
+11. Java虚拟机提供了对Java应用的监控（monitoring）和管理（management）支持，允许在虚拟机中安装代理来跟踪内存消耗、线程使用、类加载等情况。JDK提供了一个名为jconsole的图形工具，可以显示有关虚拟机性能的统计结果。
+12. Java任务控制器（Java Mission Control）是一个专业级性能分析和诊断工具，可以从[jmc](https://adoptopenjdk.net/jmc.html)得到。类似于jconsole, Java Mission Control可以关联到正在运行的虚拟机。它还能分析Java飞行记录器（Java Flight Recorder）的输出，这个工具可以从一个正在运行的Java应用收集诊断和性能分析数据。[jmc-tutorial](https://github.com/thegreystone/jmc-tutorial)提供了一个全面的教程。
 
 ## 总结
 
