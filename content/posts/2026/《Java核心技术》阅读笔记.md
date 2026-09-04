@@ -508,9 +508,9 @@ System.out.println("Hello, " + name + ". Next year, you'll be " + (age + 1));
 
 和C一样的printf方法，即`System.out.printf`。
 
-![用于printf的转换字符](/post-images/《Java核心技术》阅读笔记/v1ch03_5.png)
+![用于printf的转换字符](/post-images/《Java核心技术》阅读笔记/v1ch03_05.png)
 
-![用于printf的标志](/post-images/《Java核心技术》阅读笔记/v1ch03_6.png)
+![用于printf的标志](/post-images/《Java核心技术》阅读笔记/v1ch03_06.png)
 
 可以使用静态的String.format 方法创建一个格式化的字符串，而不打印输出：
 
