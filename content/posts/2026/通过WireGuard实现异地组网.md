@@ -11,7 +11,7 @@ hiddenFromHomePage: false
 hiddenFromSearch: false
 ---
 
-# 通过WireGuard实现异地组网
+# 通过 WireGuard 实现异地组网
 
 ## 背景
 
