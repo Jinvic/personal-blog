@@ -1,8 +1,7 @@
 ---
 title: 《Java核心技术》阅读笔记
-createdate: '2026-06-05T13:35:56+08:00'
-updatedate: '2026-08-21T13:35:56+08:00'
 date: '2026-06-05T13:35:56+08:00'
+lastmod: '2026-09-04T08:23:00+08:00'
 tags: 
 - Java
 categories: 
@@ -4396,6 +4395,12 @@ String getTail(Handler h)
 10. -Xlint 选项告诉编译器找出常见的代码问题。
 11. Java虚拟机提供了对Java应用的监控（monitoring）和管理（management）支持，允许在虚拟机中安装代理来跟踪内存消耗、线程使用、类加载等情况。JDK提供了一个名为jconsole的图形工具，可以显示有关虚拟机性能的统计结果。
 12. Java任务控制器（Java Mission Control）是一个专业级性能分析和诊断工具，可以从[jmc](https://adoptopenjdk.net/jmc.html)得到。类似于jconsole, Java Mission Control可以关联到正在运行的虚拟机。它还能分析Java飞行记录器（Java Flight Recorder）的输出，这个工具可以从一个正在运行的Java应用收集诊断和性能分析数据。[jmc-tutorial](https://github.com/thegreystone/jmc-tutorial)提供了一个全面的教程。
+
+## 第8章 泛型程序设计
+
+### 8.1 为什么要使用泛型程序设计
+
+**泛型程序设计（generic programming）**意味着编写的代码可以对多种不同类型的对象重用。
 
 ## 总结
 

@@ -1,6 +1,7 @@
 ---
 title: 通过WireGuard实现异地组网
 date: '2026-06-03T09:11:17+08:00'
+lastnod: '2026-09-21T10:41:00+08:00'
 tags: 
 - Linux
 categories: 
