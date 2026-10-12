@@ -1,7 +1,7 @@
 ---
 title: 《Java核心技术》阅读笔记
 date: '2026-06-05T13:35:56+08:00'
-lastmod: '2026-09-04T08:23:00+08:00'
+lastmod: '2026-10-12T16:29:00+08:00'
 tags: 
 - Java
 categories: 
@@ -102,9 +102,9 @@ Java的通用语法为`object.method(parameters)`，所以这里我们就是调�
 
 和C/C++不同，在Java中，整型的范围与运行Java代码的机器无关，这解决了可移植性的问题。
 
-长整型数值有一个后缀L或1(如400000000L)。十六进制数值有一个前缀x或θX(如0xCAFE)。八进制有一个前缀θ(例如，010对应十进制中的8)。显然，八进制表示法比较容易混淆，所以很少有程序员使用八进制常数。
+长整型数值有一个后缀L或1(如400000000L)。十六进制数值有一个前缀x或0X(如0xCAFE)。八进制有一个前缀0(例如，010对应十进制中的8)。显然，八进制表示法比较容易混淆，所以很少有程序员使用八进制常数。
 
-加上前缀θb或θB还可以写二进制数。例如，0b1001就是9。另外，可以为数字字面量加下画线，如用1_000_000(或0b1111_0100_0010_0100_0000)表示100万。这些下画线只是为了让人更易读。Java编译器会去除这些下画线。
+加上前缀0b或0B还可以写二进制数。例如，0b1001就是9。另外，可以为数字字面量加下画线，如用1_000_000(或0b1111_0100_0010_0100_0000)表示100万。这些下画线只是为了让人更易读。Java编译器会去除这些下画线。
 
 #### 3.3.2 浮点类型
 
@@ -1600,7 +1600,7 @@ After: b=Bob
 
 #### 4.6.2 默认字段初始化
 
-如果在构造器中没有显式地为一个字段设置初始值，就会将它自动设置为默认值：数值将设置为θ，布尔值为false，对象引用为null。
+如果在构造器中没有显式地为一个字段设置初始值，就会将它自动设置为默认值：数值将设置为0，布尔值为false，对象引用为null。
 
 这是字段与局部变量的一个重要区别。方法中的局部变量必须明确地初始化。但是在类中，如果没有初始化类中的字段，将会自动初始化为默认值。
 
@@ -4078,7 +4078,7 @@ The range to be sorted extends from fromIndex,inclusive, to toIndex, exclusive.
 @param fromIndex the index of the first element(inclusive) to be sorted.
 @param toIndex the index of the last element(exclusive) to be sorted.
 @throws IllegalArgumentException if fromIndex > toIndex
-@throws ArrayIndexOutOfBoundsException if fromIndex<θ or toIndex> a.length
+@throws ArrayIndexOutOfBoundsException if fromIndex<0 or toIndex> a.length
 */
 static void sort(int[] a,int fromIndex, int toIndex)
 ```
@@ -4220,7 +4220,7 @@ Logger Logger = Logger.getLogger(LoggerName, "com,mycompany.Logmessages");
 logger.info("readingFile");
 ```
 
-通常需要在本地化的消息中包含一些参数，因此，消息可以包括占位符{θ}、{1}等。例如，要想在日志消息中包含文件名，可以如下使用占位符：
+通常需要在本地化的消息中包含一些参数，因此，消息可以包括占位符{0}、{1}等。例如，要想在日志消息中包含文件名，可以如下使用占位符：
 
 ```txt
 Reading file {0}.
@@ -4265,7 +4265,7 @@ logger.addHandler(handler);
 
 ![文件处理器配置参数](/post-images/《Java核心技术》阅读笔记/v1ch07_01.png)
 
-![志记录文件模式变量](/post-images/《Java核心技术》阅读笔记/v1ch07_02.png)
+![日志记录文件模式变量](/post-images/《Java核心技术》阅读笔记/v1ch07_02.png)
 
 还可以通过扩展Handler类或StreamHandler类自定义处理器。如果希望编写更加复杂的流处理器，可以扩展Handler类，并定义publish、flush和close方法。
 
@@ -4415,7 +4415,7 @@ public class ArrayList // before generic classes
 }
 
 ArrayList files = new ArrayList();
-String filename =(String)files.get(θ);
+String filename =(String)files.get(0);
 files.add(new File("..."));
 ```
 
@@ -4499,7 +4499,7 @@ class ArrayAlg
 {
     public static <T> T min(T[] a) // almost correct
     {
-        if (a = null|a.length =θ) return null;
+        if (a = null|a.length =0) return null;
         T smallest = a[0];
         for(int i=1;i<a.length; i++)
         if(smallest.compareTo(a[i])>0)smallest = a[i];
@@ -4911,6 +4911,150 @@ class Manager extends Employee implements Comparable {  // 合法
 ```
 
 **不能同时实现同一接口的不同参数化版本。**两个接口都要求实现`compareTo`方法，但参数擦除为`Object`的两个桥方法的签名完全相同（都是 `int compareTo(Object)`），而具体实现逻辑不同（一个把参数转换为`Employee`，一个转换为`Manager`）。导致无法在同一个类中同时满足，编译期直接报错。
+
+### 8.7 泛型类型的继承规则
+
+一般来讲，无论S与T有什么关系，`Pair<S>`与`Pair<T>`都没有任何关系。
+
+```java
+var managerBuddies = new Pair<Manager>(ceo, cfo);
+Pair<Employee> employeeBuddies = managerBuddies; // illegal, but suppose it wasn't
+employeeBuddies.setFirst(lowlyEmployee);
+```
+
+如上，假设允许将`Pair<Manager>`
+转换为`Pair<Employee>`，employeeBuddies和managerBuddies将引用同样的对象。`employeeBuddies.setFirst()`把CFO和一个底层员工组成一对，这对于`Pair<Manager>`来说应该是不可能的。
+
+```java
+Manager[] managerBuddies = { ceo, cfo };
+Employee[] employeeBuddies = managerBuddies; // 0K
+employeeBuddies[0] = lowlyEmployee // error 
+```
+
+可以将一个Manager[]数组赋给一个类型为Employee[]的变量。但数组有特别的保护。如果试图将一个底层员工存储到employeeBuddies\[0\],虚拟机将会抛出`ArrayStoreException`异常。
+
+```java
+var managerBuddies = new Pair<Manager>(ceo,cfo);
+Pair rawBuddies = managerBuddies; // 0K
+rawBuddies.setFirst(new File("...")); // only a compile-time warning
+```
+
+参数化类型可以转换为一个原始类型，但仍然会导致类型错误`ClassCastException`。
+
+泛型类可以扩展或实现其他的泛型类。就这一点而言，它们与普通的类没有什么
+区别。
+
+![泛型列表类型之间的子类型关系](/post-images/《Java核心技术》阅读笔记/v1ch08_01.png)
+
+### 8.8 通配符类型
+
+严格的泛型类型系统用起来并不方便。为此有一种**通配符类型（wildcard type）**简化使用。
+
+#### 8.8.1 通配符概念
+
+在通配符类型中，允许类型参数变化。例如，对于**上界通配符（extends）**，通配符类型`Pair<? extends Employee>`表示任何泛型Pair类型，参能书是Employee的子类，如`Pair<Mamager>`，但不能是`Pair<String>`。
+
+![使用通配符的子类型关系](/post-images/《Java核心技术》阅读笔记/v1ch08_02.png)
+
+```java
+var managerBuddies = new Pair<Manager>(ceo, cfo);
+Pair<? extends Employee> wildcardBuddies = managerBuddies; // 0K
+wildcardBuddies.setFirst(lowlyEmployee); // compile-time error
+
+Class Pair<? extends Employee>{
+    ? extends Employee getFirst()
+    void setFirst(? extends Employee)
+}
+```
+
+使用通配符不会会通过`Pair<? extends Employee>`的引用破坏`Pair<Manager>`。对setFirst的调用有一个类型错误。考虑调用`wildcardBuddies.setFirst(lowlyEmployee)`，编译器知道
+setFirst的参数有某个特定的类型，这个类型扩展了Employee。但编译器无法确认具体的类型。所以无论是传入Employee实例lowlyEmployee还是Manager实例cio都会报错。即编译器必须拒绝除了null以外的所有传入参数。
+
+getFirst方法则可以继续工作。getFirst的返回值是某个特定类型的实例，这是Employee的一个子类型。编译器不知道这个特定类型是什么,但它可以保证对Employee引用的赋值是安全的。
+
+这就是引入有限定的通配符的关键之处。可以区分安全的访问器方法和不安全的更改器方法了。简单来说，无参数的访问器是安全的，可以正常使用；有参数的更改器因为不确定参数具体类型可能不安全，所以直接拒绝 null 以外的所有传入参数。
+
+#### 8.8.2 通配符的超类型限定
+
+可以使用**下界通配符（super）**指定一个**超类型限定（supertype bound）**，例如`? super Manager`，这个通配符限制为Manager的所有超类型。有超类型限定的通配符会提供一种行为：可以为方法提供参数，但不能使用返回值。即可写不可读，和上界通配符extend相反。
+
+```java
+Class Pair<? super Manager>{
+    void setFirst(? super Manager)
+    ? super Manager getFirst()
+}
+
+public static void minmaxBonus(Manager[] a,Pair<? super Manager> result)
+{
+    if(a.length = 0) return;
+    Manager min = a[0];
+    Manager max = a[0];
+    for(int i=1;i<a.length; i++)
+    {
+    if(min.getBonus()> a[i].getBonus())min = a[i];
+    if(max.getBonus()<a[i].getBonus())max = a[i];
+    }
+    result.setFirst(min);
+    result.setSecond(max);
+}
+```
+
+etFirst的参数类型表示为`? super Manager`，这是某个特定类型T，而Manager是T的一个子类型。对于T实际上有3种选择：Object、Employee或 Manager。在调用result.setFirst()时向T类型对象引用写入一个Manager类型实例，而向父类对象变量写入子类是合法的。而对于getFirst，不能保证返回对象的类型。只能把它赋给一个Object。
+
+直观地讲，带有超类型限定的通配符允许写入一个泛型对象，而带有子类型限定的通配符允许读取一个泛型对象。
+
+#### 8.8.3 无限定通配符
+
+```java
+class Pair<?> {
+    ? getFirst()
+    void setFirst(?)
+}
+```
+
+如果操作不依赖具体类型，可以直接使用无限定的无界通配符`?`。其中getFirst只能赋值给Object，setFirst只能传入null。
+
+- 相比原始类型Pair，带无界通配符的Pair<?>更安全，拒绝任何可能破坏类型安全的写入（只允许 null）。
+- 相比泛型方法版本的`<T> boolean hasNulls(Pair<T> p)`，无界通配符版本的`boolean hasNulls(Pair<?> p)`更简介，可读性更好。
+
+#### 8.8.4 通配符捕获
+
+通配符不是类型变量，不能直接作为类型使用。但可以通过泛型方法作为辅助方法将通配符**捕获**为具体类型使用：
+
+```java
+// 错误示例：直接使用通配符作为类型
+public static void swap(Pair<?> p) {
+    ? t = p.getFirst();              // ❌ 错误
+    p.setFirst(p.getSecond());       // ❌ 错误
+    p.setSecond(t);                  // ❌ 错误
+}
+
+// 正确示例：使用泛型方法捕获通配符
+public static <T> void swapHelper(Pair<T> p) {
+    T t = p.getFirst();              // ✅ T 是明确的类型变量
+    p.setFirst(p.getSecond());       // ✅ 类型匹配
+    p.setSecond(t);                  // ✅ 类型匹配
+}
+
+public static void swap(Pair<?> p) {
+    swapHelper(p);                   // ✅ 通配符被“捕获”为 T
+}
+```
+
+有时候拿到的 API 就是通配符版本，无法改变这个ABI。这时如果你需要在方法内部操作具体类型，就必须用“通配符捕获”技巧来临时抓住那个类型。
+
+```java
+public static void maxminBonus(Manager[] a, Pair<? super Manager> result) {
+    minmaxBonus(a, result);           // 调用其他方法
+    PairAlg.swapHelper(result);       // ✅ 通配符捕获！这里必须用 swapHelper
+}
+```
+
+通配符捕获不是 Java 设计者主动设计的一个“高级特性”，而是类型擦除 + 通配符机制下，为了解决特定问题而不得不提供的“逃生通道”。通配符捕获只在编译器能保证“单一类型”的情况下才被允许。一旦涉及多个通配符，捕获机制就失效了。
+
+### 8.9 反射和泛型
+
+TODO: 暂略。
 
 ## 总结
 
