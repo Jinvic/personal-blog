@@ -25,6 +25,7 @@ jobs:
       with:
         hugo-version: 'latest'
         extended: true
+        dart-sass-version: '1.108.2'
 
     - name: Build the site
       run: hugo --minify # 使用--minify选项来压缩HTML、JS和CSS
