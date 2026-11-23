@@ -215,7 +215,10 @@ type Request struct {
     Auth Auth `cel:"auth"`
 }
 env, _ := cel.NewEnv(
-    cel.Types(&Request{}),
+    ext.NativeTypes(ext.ParseStructTags(true),
+        // reflect.TypeFor[Request](), // go 1.22+
+        reflect.TypeOf(&Request{}),
+    ),
     cel.Variable("request", cel.ObjectType("main.Request")),
 )
 ```
