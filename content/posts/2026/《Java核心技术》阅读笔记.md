@@ -1,7 +1,7 @@
 ---
 title: 《Java核心技术》阅读笔记
 date: '2026-06-05T13:35:56+08:00'
-lastmod: '2026-10-12T16:29:00+08:00'
+lastmod: '2026-11-28T17:50:00+08:00'
 tags: 
 - Java
 categories: 
@@ -5055,6 +5055,550 @@ public static void maxminBonus(Manager[] a, Pair<? super Manager> result) {
 ### 8.9 反射和泛型
 
 TODO: 暂略。
+
+## 第9章 集合
+
+### 9.1 Java集合框架
+
+#### 9.1.1 集合接口与实现分离
+
+与现代的数据结构类库的常见做法一样，Java集合类库也将**接口（interface）**与**实现（implementation）**分离。
+
+**队列接口（queue interface）**指出可以在队尾添加元素，在队头删除元素，并且可以查找队列中元素的个数。最简形式可能如下所示：
+
+```java
+public interface Queue<E> // a simplified form of the interface in the standard library
+{
+    void add(E element);
+    E remove();
+    int size();
+}
+```
+
+队列通常有两种实现方式：一种是使用循环数组；另一种是使用链表：
+
+```java
+public class CircularArrayQueue<E> implements Queue<E>// not an actual library class
+{
+    private int head;
+    private int tail;
+    CircularArrayQueue(int capacity){...}
+    public void add(E element){...}
+    public E remove(){...}
+    public int size(){...}
+    private E[] elements;
+}
+public class LinkedListQueue<E> implements Queue<E> // not an actual library class
+{
+    private Link head;
+    private Link tail;
+    LinkedListQueue(){...}
+    public void add(E element){...}
+    public E remove(){...}
+    public int size(){...}
+}
+```
+
+> 实际上，Java类库没有名为CircularArrayQueue和 LinkedListQueue的类。这里只是以这些类为例来解释集合接口与实现在概念上的区分。果需要一个循环数组队列，可以使用ArrayDeque类。如果需要一个链表队列，就直接使用LinkedList类，这个类实现了Queue接口。
+
+在程序中使用队列时，一旦已经构造了集合，不需要知道究竟使用了哪种实现。因此，只是在构造集合对象时，才会使用具体的类。可以使用接口类型(interface type)存放集合引用。需要时只需要修改调用构造器的语句就可以换成另一种实现。
+
+```java
+Queue<Customer> expressLane = new CircularArrayQueue<>(100);
+expressLane.add(new Customer("Harry"));
+
+Queue<Customer> expressLane = new LinkedListQueue<>();
+expressLane.add(new Customer("Harry"));
+```
+
+在研究API文档时，会发现另外一组名字以 Abstract开头的类，例如，AbstractQueue。这些类是为类库实现者而设计的。如果想要实现自己的队列类，会发现扩展AbstractQueue类要比实现Queue接口中的所有方法更容易。
+
+#### 9.1.2 Collection接口
+
+```java
+public interface Collection<E>
+{
+    boolean add(E element);
+    Iterator<E> iterator();
+}
+```
+
+在Java类库中，集合类的基本接口是Collection接口。这个接口有两个基本方法：
+
+- `add`方法用于向集合中添加元素。如果添加元素确实改变了集合就返回 true；如果集合没有发生变化就返回 false。
+- `iterator`方法用于返回一个实现了`Iterator`接口的对象。可以使用这个迭代器对象依次访问集合中的元素。
+
+#### 9.1.3 迭代器
+
+```java
+public interface Iterator<E>
+{
+    E next();
+    boolean hasNext();
+    void remove();
+    default void forEachRemaining(Consumer<? super E> action);
+}
+```
+
+通过反复调用`next`方法，可以逐个访问集合中的每个元素。但是，如果到达了集合的末尾，next方法将抛出一个`NoSuchElementException`。因此，在调用next之前需要调用`hasNext`方法。如果迭代器对象还有更多可以访问的元素，这个方法就返回true。如果想要查看集合中的所有元素，就请求一个迭代器，当 hasNext返回true 时就反复地调用next方法。
+
+```java
+Collection<String>c=...;
+Iterator<String> iter = c.iterator();
+while(iter.hasNext())
+{
+    String element = iter.next();
+    // do something with element
+}
+```
+
+可以更加简洁地将这个循环写为“for each”循环。“for each”循环可以处理任何实现了Iterable接口的对象，这个接口只有一个抽象方法。
+
+```java
+for (String element:c)
+{
+    // do something with element
+}
+
+public interface Iterable<E>
+{
+    Iterator<E> iterator();
+}
+```
+
+也可以不写循环，而是调用forEachRemaining方法并提供一个lambda表达式。将对迭代器的每一个元素调用这个lambda表达式，直到再没有元素为止。
+
+```java
+iterator.forEachRemaining(element -> {/*do something with element*/});
+```
+
+访问元素的顺序取决于集合类型。对ArrayList等有序集合顺序访问，对HashSet等无序集合随机访问，但包装会遍历到所有元素。
+
+可以认为Java迭代器位于两个元素之间。当调用next时，迭代器就越过下一个元素，并返回刚刚越过的那个元素的引用，如下图。
+
+![向前移动迭代器](/post-images/《Java核心技术》阅读笔记/v1ch09_01.png)
+
+Iterator接口的remove方法会删除上次调用next方法返回的元素。在大多数情况下，这是有道理的，在决定某个元素确实是要删除的元素之前，应该先看一下这个元素。不过，如果想要删除指定位置上的元素，仍然需要越过这个元素。
+
+更重要的是，next 方法和 remove方法调用之间存在依赖性。调用 remove 之前没有调用
+next,将是不合法的。如果这样做，将会抛出一个IllegalStateException异常。
+
+```java
+// 删除队首元素
+Iterator<String> it = c.iterator();
+it.next();// skip over the first element
+it.remove(); // now remove it
+
+// 连续删除元素
+it.remove();
+it.remove(); // ERROR
+
+it.remove();
+it.next();
+it.remove(); // OK
+```
+
+#### 9.1.4 泛型实用方法
+
+collection接口声明的部分方法：
+
+```java
+int size()
+boolean isEmpty()
+boolean contains(Object obj)
+boolean containsAll(Collection<?> c)
+boolean equals(Object other)
+boolean addAll(Collection<?extends E> from)
+boolean remove(Object obj)
+boolean removeAll(Collection<?> c)
+void clear()
+boolean retainAll(Collection<?> c)
+Object[] toArray()
+```
+
+Java类库提供了一个类`AbstractCollection`，其中保持基础方法size和iterator仍为抽象方法，但是为实现者实现了其他例行方法。这样一来，具体集合类可以扩展AbstractCollection类。
+
+### 9.2 集合框架中的接口
+
+集合有两个基本接口：`Collection`和`Map`。集合使用`add`插入元素，映射使用`put`插入元素。集合可以使用迭代器访问元素，有序集合还可以使用或整数索引（随机访问）。映射可以使用迭代器或`get`访问元素。
+
+```java
+boolean add(E element)
+V put(K key, V value)
+V get(K key)
+```
+
+![集合框架接口](/post-images/《Java核心技术》阅读笔记/v1ch09_02.png)
+
+List接口定义了多个用于随机访问的方法：
+
+```java
+void add(int index, E element)
+void remove(int index)
+E get(int index)
+E set(int index,E element)
+```
+
+ListIterator接口是Iterator的一个子接口。它定义了一个方法用于在迭代器位置前面增加一个元素：
+
+```java
+void add(E element)
+```
+
+> 有序集合实际上有数组和链表两种实现方式，它们的性能开销有很大差异，数组实现可以快速随机访问，链表实现最好使用迭代器遍历。Java 1.4 引入了一个标记接口`RandomAccess`，它不包含任何方法，但可以用来测试一个特定集合是否支持高效随机访问。
+
+```java
+if (c instanceof RandomAccess)
+{   use random access algorithm }
+else
+{ use sequential access algorithm }
+```
+
+Set接口声明等同于Collection接口，不过其方法的行为有更严谨的定义。**集（set）**的add方法不允许增加重复的元素。要适当地定义集的equals方法：只要两个集包含同样的元素就认为它们是相等的，而不要求这些元素有同样的顺序。hashCode方法的定义要保证包含相同元素的两个集会得到相同的散列码。
+
+SortedSet和SortedMap接口会提供用于排序的比较器对象，这两个接口定义了可以得到集合子集视图的方法。视图将在[9.5 副本与视图](#95-副本与视图)介绍。
+
+Java 6引入了接口NavigableSet和 NavigableMap,其中包含额外的一些用于搜索和遍历有序集和映射的方法。TreeSet和 TreeMap类实现了这些接口。
+
+### 9.3 具体集合
+
+![Java类库中的具体集合](/post-images/《Java核心技术》阅读笔记/v1ch09_03.png)
+
+在上表中，除了以 Map结尾的类之外，其他类都实现了Collection接口，而以 Map结尾
+的类实现了Map接口。映射将在[9.4 映射](#94-映射)介绍。
+
+![集合框架中的类](/post-images/《Java核心技术》阅读笔记/v1ch09_04.png)
+
+#### 9.3.1 链表
+
+数组和数组列表从中间删除元素开销很大，因为需要把被删除元素之后的所有元素都向前移动。插入元素也是如此，需要将插入位置之后的所有元素向后移动。
+
+**链表（linked list）**这个数据结构解决了这个问题。在链表中插入或删除元素只需要更新周围的**链接（link）**即可。Java中所有的链表都有**双向链接（doubly linked）**。
+
+Java集合类库提供了一个可以直接使用的`LinkedList`类。
+
+```java
+var staff = new LinkedList<String>();
+staff.add("Amy");
+staff.add("Bob");
+staff.add("Carl");
+Iterator<String> iter = staff.iterator();
+String first = iter.next(); // visit first element
+String second = iter.next(); // visit second element
+iter.remove(); // remove last visited element
+```
+
+链表的add只会将元素添加到链表尾部。如果需要添加到中间应该使用链表的迭代器的`add`方法。与Collection.add不同，这个方法不返回boolean类型的值，它假定add操作总会改变链表。
+
+另外，ListIterator接口有两个方法`previous`和`hasPrevious`可以用来反向遍历链表。
+
+```java
+interface ListIterator<E> extends Iterator<E>
+{
+    void add(E element);
+    E previous()
+    boolean hasPrevious()
+}
+```
+
+可以使用LinkedList类的listIterator方法返回一个实现了ListIterator接口的迭代器对象。
+
+```java
+ListIterator<String> iter = staff.listIterator();
+```
+
+set方法会用一个新元素替换调用next或previous方法返回的上一个元素。
+
+```java
+ListIterator<String> iter = list.listIterator();
+String oldvalue = iter.next(); // returns first element
+iter.set(newValue); // sets first element to newValue
+```
+
+```java
+List<String> list =...;
+ListIterator<String> iter1 = list.listIterator();
+ListIterator<String> iter2= list.listIterator();
+iter1.next();
+iter1.remove();
+iter2.next(); // throws ConcurrentModificationException
+```
+
+如果一个迭代器发现它的集合被另一个迭代器修改了，或是被该集合自身的某个方法修改了，就会抛出一个`ConcurrentModificationException`异常。为了避免发生并发修改异常，可以根据需要为一个集合关联多个只读迭代器。或者只关联一个能同时读写的迭代器。
+
+Collection接口还声明了操作链表的很多其他有用的方法。其中大部分方法都是在LinkedList类的超类AbstractCollection中实现的。例如`toString`方法会调用所有元素的toString,并生成一个格式为`[A,B,C]`的长字符串。`contains`方法可以检测某个元素是否出现在链表中。
+
+LinkedList类提供了一个`get`方法，用来访问某个特定元素。但它的效率不高，本质还是从头开始搜索，需要避免使用。
+
+`nextIndex`方法返回下一次调用next方法时所返回元素的整数索引； `previousIndex`方法返回下一次调用previous方法时所返回元素的整数索引。list.listIterator(n)将返回指向索引为n的元素前面位置的迭代器。
+
+#### 9.3.2 数组列表
+
+集合类库提供了我们熟悉的ArrayList类，这个类也实现了List接口。ArrayList封装了一个动态再分配的对象数组。相比通过迭代器访问的链表，数组更多是使用`get`和`set`方法随机访问。
+
+#### 9.3.3 散列集
+
+链表和数组可以指定元素顺序，但查找时需要遍历所有元素。如果重点在快速查找元素而不在意元素数据，可以使用**散列表（hash table）**。散列表为每个对象计算一个整数，称为**散列码（hash code）**。详见[5.2.4 hashCode方法](#524-hashcode方法)。
+
+在Java中，散列表实现为链表数组。每个列表被称为**桶（bucket）**。查找元素在表中位置时先计算散列码再和桶总数取余，作为保存这个元素的桶的索引。如果桶已经填充了元素，这种现象成为**散列冲突（hash collision）**，需要和桶内所有元素比较查看是否已存在。如果散列码合理地随机分布且桶的数目够大，需要比较多次数就会很小。
+
+![散列表](/post-images/《Java核心技术》阅读笔记/v1ch09_05.png)
+
+> Java 8 中桶满时会从链表变为平衡二叉树，减少比较次数提高性能。
+>
+> 散列表的键要尽可能属于一个实现了Comparable接口的类，保证不会因为散列码分布不均匀而导致性能低下。
+
+可以通过指定初始桶数控制散列表性能。通常设为预计元素个数的75%~150%。标准类库使用的是2的幂，默认值为16，设置桶数将自动调整为2的下一个幂值。
+
+如果散列表太满，就需要**再散列（rehashed）**。创建一个桶数更多的表，并将所有元素插入这个新表中，然后丢弃原来的表。**装填因子（load factor）**可以确定何时对散列表进行再散列。例如，如果装填因子为0.75（默认值）,而表中已经填满了75%以上，就会自动再散列，新表的桶数是原来的两倍。对于大多数应用来说，装填因子为0.75是合理的。
+
+散列表可以用于实现很多重要的数据结构。其中最简单的是集类型。集是没有重复元素的元素集合。集的add方法首先尝试在这个集中查找要添加的对象，只有这个元素不存在时才会添加这个对象。
+
+Java集合类库提供了一个HashSet类，它基于散列表实现了一个集。可以用add方法添加元素。contains方法被重新定义，以便可以快速查找一个元素是否已经在集中。它只查看一个桶中的元素，而不必查看集合中的所有元素。
+
+散列集迭代器将依次访问所有的桶。因为散列将元素分散存放在表中，所以会以一种看起来随机的顺序访问元素。只有不关心集合中元素的顺序时才应该使用HashSet。
+
+#### 9.3.4 树集
+
+TreeSet类与散列集类似，不同的是，树集是一个**有序集合（sorted collection）**。可以以任意顺序将元素插入集合中。在对集合进行遍历时，值将自动地按照排序后的顺序出现。这个排序是通过**红黑树（red-black tree）**的数据结构实现的。
+
+将一个元素添加到树中，查找其正确位置的时间复杂度为log<sub>2</sub>n。
+
+> 要使用树集，必须能够比较元素。这些元素必须实现`Comparable`接口，或者构造集时必须提供一个`Comparator`，见[6.1.8 Comparator 接口](#618-comparator接口)
+>
+> 从Java 6起，TreeSet类实现了`NavigableSet`接口。这个接口增加了几个便利方法，用于查找元素以及反向遍历。详细信息请参见API注释。
+
+#### 9.3.5 队列与双端队列
+
+队列允许高效地在队尾添加元素，并在队头删除元素。**双端队列（deuqe）**在队头和队尾都能高效地添加或删除元素。不支持在队列中间添加元素。Java6中引入了Deque接口，`ArrayDeque`和`LinkedList`类实现了这个接口。这两个类都可以提供双端队列，其大小可以根据需要扩展。
+
+#### 9.3.6 优先队列
+
+**优先队列（priority queue）**中的元素可以按照任意的顺序插入，但会按照有序的顺序获取。调用remove方法时，总会获得当前优先队列中最小的元素。优先队列使用的数据结构是堆（heap）。堆是一个自组织的二叉树，其添加add和删除remove操作会让最小的元素移动到根，而不必花费时间对元素进行排序。
+
+与 TreeSet一样，优先队列既可以包含实现了Comparable接口的类对象，也可以包含构造器中提供的Comparator对象。
+
+优先队列的典型用法是任务调度。每一个任务有一个优先级，任务以随机顺序添加到队列中。每当启动一个新的任务时，将从队列中删除优先级最高的任务。
+
+### 9.4 映射
+
+**映射（map）**用来存放键/值对。如果提供了键，可以查找一个值。
+
+#### 9.4.1 基本映射操作
+
+Java类库为映射提供了两个通用的实现：HashMap和TreeMap。这两个类都实现了Map接口。
+
+散列映射对键进行散列，树映射根据键的顺序将它们组织为一个搜索树。散列或比较函数只应用于键。与键关联的值不进行散列或比较。
+
+与集一样，不要求键有序使用散列映射，要求有序则使用树映射。
+
+如果映射中没有存储与指定键对应的信息，get将返回null。有时对于没有出现在映射中的键，可以使用get0rDefault方法给一个合适的默认值。
+
+键必须是唯一的。不能对同一个键存放两个值。如果用同一个键调用两次put方法，第二个值就会取代第一个值。实际上，put 将返回与这个键参数关联的上一个值。remove方法从映射中删除给定键对应的元素。size方法返回映射中的元素数。
+
+要迭代处理映射的键和值，最容易的方法是使用forEach方法。可以提供一个接收键和值的lambda表达式。映射中的每一项会依序调用这个表达式。
+
+```java
+var staff = new HashMap<String,Employee>(); // HashMap implements Map
+var harry = new Employee("Harry Hacker");
+staff.put("987-98-9996",harry);
+
+var id= "987-98-9996";
+Employee e= staff.get(id); // gets harry
+
+Map<String, Integer> scores =...;
+int score = scores.getOrDefault(id,0);// gets 0 if the id is not present
+
+scores.forEach((k, v) -> System.out.println("key="+k+",value="+v));
+```
+
+#### 9.4.2 更新映射条目
+
+```java
+// word首次出现返回null报错
+counts.put(word, counts.get(word)+ 1);
+
+// key不存在时赋默认值
+counts.put(word, counts.getOrDefault(word,0)+1);
+
+// 不存在时先赋值，确保key存在
+counts.putIfAbsent(word,0);
+counts.put(word, counts.get(word)+ 1); // now we know that get will succeed
+
+// 不存在时赋值1，否则加1
+counts.merge(word,1, Integer::sum);
+```
+
+#### 9.4.3 映射视图
+
+集合框架不认为映射本身是一个集合。（其他数据结构框架则认为映射是一个键/值对集合，或者是按键索引的值集合。）不过，可以得到映射的**视图（view）**——实现了Collection接口或某个子接口的对象。
+
+有3种视图：键集、值集合以及键/值对集。键和键/值对可以构成一个集，因为映射中一个键只能有一个副本。
+
+```java
+Set<K> keySet()
+Collection<V> values()
+Set<Map.Entry<K,V>> entrySet()
+```
+
+需要说明的是，keySet不是HashSet或TreeSet,而是实现了Set接口的另外某个类的对象。Set接口扩展了Collection接口。因此，可以像使用任何集合一样使用keySet。
+
+```java
+// 遍历键值对
+for(Map.Entry<String,Employee> entry:staff.entrySet())
+{
+String k = entry.getKey();
+Employee v= entry.getValue();
+// do something with k,v
+}
+
+// 使用var省略类型声明
+for (var entry:map.entrySet())
+{
+    // do something with entry.getKey(),entry.getValue()
+}
+
+// 或者直接使用 forEach 方法：
+map.forEach((k,v)->
+{
+    // do something with k,v
+});
+```
+
+如果在键集视图上调用迭代器的 remove方法，实际上会从映射中删除这个键和与它关联的值。不过，不能向键集视图中添加元素。另外，如果只添加一个键而没有同时添加值也是没有意义的。如果试图调用add方法，它会抛出一个`UnsupportedoperationException`。
+
+#### 9.4.4 弱散列映射
+
+当键的唯一引用来自散列表条目时，`WeakHashMap`这个数据结构将与垃圾回收器合作删除键/值对。
+
+WeakHashMap使用**弱引用（weak reference）**保存键。WeakReference对象将包含另一个对象的引用，在这里，就是一个散列表键。对于这种类型的对象，垃圾回收器采用一种特殊的方式进行处理。正常情况下，如果垃圾回收器发现某个特定的对象已经没有引用了，就会将其回收。不过，如果这个对象只能由一个WeakReference引用，垃圾回收器也会将其回收，但会将引用这个对象的弱引用放入一个队列。WeakHashMap的操作会定期地检查这个队列，查找新加入的弱引用。一个弱引用进入这个队列意味着这个键不再由任何人使用，并且已经回收。于是，WeakHashMap将删除相关联的映射条目。
+
+简单来说，WeakHashMap使用弱引用保存键。GC会回收只被弱引用的对象，放入一个引用队列。WeakHashMap发现键在回收队列中时删除相应的键值对。
+
+#### 9.4.5 链接散列集与映射
+
+LinkedHashSet和LinkedHashMap类会记住插入元素项的顺序。这样可以避免散列表中看起来随机的元素顺序。在散列表中插入元素项时，它们会加入一个双向链表中。
+
+![链接散列表](/post-images/《Java核心技术》阅读笔记/v1ch09_06.png)
+
+链接散列映射可以使用**访问顺序（access order）**而不是插入顺序来迭代处理映射条目。每次调用get或put时，受到影响的条目将从当前位置删除，并放在条目链表的末尾。要构建这样一个散列映射，需要在构造器中传参accessOrder：
+
+```java
+LinkedHashMap(int initialCapacity, float loadFactor, boolean accessOrder)
+```
+
+访问顺序对于实现缓存的“最近最少使用”原则十分重要。可以得到映射表的一个迭代器，并删除它枚举的前几个元素，它们是最近最少使用的几个元素。甚至可以自动完成这一过程。构造LinkedHashMap的一个子类，然后覆盖`removeEldestEntry`方法。每当这个方法返回true时，添加一个新映射条目就会导致删除eldest映射条目。
+
+```java
+protected boolean removeEldestEntry(Map.Entry<K,V> eldest)
+```
+
+#### 9.4.6 枚举集与映射
+
+EnumSet是一个高效的集实现，其元素属于一个枚举类型。因为枚举类型只有有限个实例，所以 EnumSet 在内部实现为一个位序列。如果对应的值在集中出现，相应的位则置为1。
+
+EnumSet类没有公共构造器。要使用静态工厂方法构造这个集。
+
+```java
+enum Weekday{ MONDAY,TUESDAY,WEDNESDAY,THURSDAY,FRIDAY,SATURDAY,SUNDAY };
+EnumSet<Weekday> always = EnumSet.allOf(Weekday.class);
+EnumSet<Weekday> never = EnumSet.noneOf(Weekday.class);
+EnumSet<Weekday> workday = EnumSet.range(Weekday.MONDAY,Weekday.FRIDAY);
+EnumSet<weekday> mwf = EnumSet.of(Meekday.MONDAY,Weekday.WEDNESDAY,Weekday.FRIDAY);
+```
+
+可以使用Set接口的常用方法来修改 EnumSet。
+
+EnumMap是一个映射，它的键属于一个枚举类型。EnumMap内部被实现为一个值数组，因为枚举的索引（ordinal）是连续的整数，所以可以直接利用枚举常量的序号作为数组下标来存储值。需要在构造器中指定键类型：
+
+```java
+var personInCharge = new EnumMap<Weekday,Employee>(Weekday.class);
+```
+
+#### 9.4.7 标识散列映射
+
+`IdentityHashMap`键的散列值不是用hashCode函数计算的，而是用`System,identityHashCode`方法计算，这是根据对象的内存地址计算，会忽略对象重写的hashCode方法。两个对象进行比较时，IdentityHashMap使用==而不是equals。
+
+也就是说，不同的键对象即使内容相同，也被视为不同的对象。在实现对象遍历算法（如对象串行化）时，如果想跟踪哪些对象已经遍历过，这个类就很有用。
+
+### 9.5 副本与视图
+
+通过使用**视图（view）**,可以得到其他实现了Collection接口或Map接口的对象。以映射类keySet方法为例，看起来好像这个方法创建了一个新集，并填入映射中的所有键，然后返回这个集。实际上，keySet方法返回一个实现了Set接口的类对象，这个类的方法可以操纵原映射。这种集合称为视图。
+
+#### 9.5.1 小集合
+
+Java 9引入了一些静态方法，可以生成给定元素的集或列表，以及给定键/值对的映射。元素、键或值不能为null。集和映射键不能重复。
+
+```java
+List<String> names = List.of("Peter","Paul","Mary");
+Set<Integer> numbers = Set.of(2,3,5);
+Map<String, Integer> scores = Map.of("Peter",2, "Paul",3, "Mary",5);
+
+numbers = Set.of(13, null);// Error--null element
+scores = Map.of("Peter",4,"Peter",2);// Error--duplicate key
+```
+
+对于Map接口，则无法提供一个参数可变版本的of，因为参数类型会交替为键类型和值类型。不过它有一个静态方法ofEntries,能接受任意多个`Map.Entry<K,V>`对象。
+
+```java
+Map<String, Integer> scores = ofEntries(
+    entry("Peter",2),
+    entry("Paul",3),
+    entry("Mary",5));
+```
+
+这些集合对象是**不可修改的（unmodifiable）**。如果试图改变它们的内容，会导致一个`UnsupportedoperationException`异常。如果需要一个可更改的集合，可以把这个不可修改的集合传递到构造器。
+
+```java
+var names = new ArrayList<>(List.of("Peter","Paul","Mary")); // A mutable list of names
+```
+
+`Collections.nCopies(n,anObject)`会返回一个实现了List接口的不可变对象，看起来是一个长为n的数组，实际只存了一个对象，所有引用都指向该对象，实际开销极小。也可以结合其他api实现批量填充。
+
+```java
+List<String> settings = Collections.nCopies(100,"DEFAULT");
+
+// 快速构造可变集合
+List<String> list = new ArrayList<>(Collections.nCopies(100, null));
+```
+
+#### 9.5.2 不可修改的副本和视图
+
+为了建立一个集合的**不可修改的副本（ummodifiable copy）**，可以使用集合类型的copyof方法。每个copyOf方法会建立集合的一个副本。如果修改了原集合，这个副本不受影响。如果原集合恰好是不可修改的，而且类型正确，copy0f则会直接返回原集合。
+
+```java
+ArrayList<String> names =...;
+Set<String> nameSet = Set.copyOf(names); // The names as an unmodifiable set
+List<String> nameList = List.copyOf(names); // The names as an unmodifiable list
+
+Set<String> names = Set.of("Peter","Paul","Mary");
+Set<String> nameset = Set.copyof(names); // No need to make a copy: names == nameSet
+```
+
+Collections类还有一些方法可以生成集合的**不可修改的视图（unmodifiable view）**，每个方法都定义为处理一个接口。这些视图对现有集合增加了一个运行时检查。如果检测到试图修改不可修改的集合，就抛出一个`portedoperationException`异常，而不是将调用传递给底层集合。
+
+```java
+Collections.unmodifiableCollection()
+Collections.unmodifiableList()
+Collections.unmodifiableSet()
+Collections.unmodifiableSortedSet()
+Collections.unmodifiableNavigableSet()
+Collections.unmodifiableMap()
+Collections.unmodifiableSortedMap()
+Collections.unmodifiableNavigableMap()
+```
+
+如果原集合改变，视图会反映这些变化。这正是视图与副本的区别。不可修改的视图并不会让集合本身变为不可变。仍然可以通过集合的原始引用修改这个集合，并且仍然可以对集合的元素调用更改器方法。
+
+因为视图只是包装了接口而不是具体的集合对象，所以只能访问接口中定义的方法。例如，LinkedList类有一些便利方法，如addFirst和addLast，它们不是List接口的方法，不能通过不可修改的视图访问这些方法。
+
+#### 9.5.3 子范围
+
+可以为很多集合建立子范围(subrange)视图。第一个索引包含在内，而不包含第二个索引。对子范围的操作会反映到整个列表。对于有序集和映射，可以使用排序顺序而不是元素位置建立子范围。
+
+### 9.6 算法
+
+### 9.7 遗留的集合
 
 ## 总结
 
